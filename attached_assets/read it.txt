@@ -1,0 +1,534 @@
+import requests
+import time
+import threading
+import json
+import os
+import random
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import re
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import logging
+import asyncio
+import aiohttp
+
+# Replace with your actual API key
+api_key = 'AIzaSyBlNdDdCCTQWV3UZ4Ey9jdz3tZxwgT_X9w'  # <--- Replace this with your actual API key
+
+# Define the endpoint with the API key
+endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+
+# Define the headers
+headers = {
+    'Content-Type': 'application/json'
+}
+
+# File to store the conversation history
+history_file = "conversation_history.json"
+# File to store the generated facts
+facts_file = "facts.json"
+# File to store the query history and adaptation data
+query_history_file = "query_history.json"
+
+# Use a dictionary to store histories
+chat_histories = {}
+current_chat_id = "default"  # Start with a default chat ID
+
+# Global list to store facts. Now a list of dictionaries.
+all_facts = []
+facts_lock = threading.Lock()
+
+# Use a set for efficient duplicate checking, stores fact IDs.
+all_facts_set = set()
+facts_set_lock = threading.Lock()
+
+# Initial delay and backoff factor
+initial_delay = 0.2
+backoff_factor = 2
+max_delay = 60  # Maximum delay to prevent infinite waiting
+num_facts_per_request = 5  # Number of facts to request in each API call
+similarity_threshold = 0.85  # Threshold for considering facts as similar
+vectorizer = TfidfVectorizer()  # Global TF-IDF vectorizer
+all_fact_texts = []  # store the text of all facts to be used in vectorizer.fit_transform
+# Dictionary to store query history and adaptation data
+query_history = {}
+query_history_lock = threading.Lock()
+
+# Predefined topics
+predefined_topics = [
+    "Space Exploration",
+    "Ancient History",
+    "Modern Technology",
+    "Wildlife",
+    "Famous Scientists",
+    "World Geography",
+    "Popular Culture",
+    "The Human Body",
+    "Artificial Intelligence",
+    "Climate Change"
+]
+
+# Setup logging
+logging.basicConfig(level=logging.INFO,  # Changed to INFO
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler("fact_retrieval.log"),  # Log to a file
+                        logging.StreamHandler()  # Also log to console
+                    ])
+logger = logging.getLogger(__name__)
+
+# Download stopwords for NLP
+try:
+    stop_words = set(stopwords.words('english'))
+except Exception as e:
+    logger.error(f"Error downloading stopwords: {e}.  Using a basic set.")
+    stop_words = set(
+        ["i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours",
+         "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers",
+         "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves",
+         "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are",
+         "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does",
+         "did", "doing", "a", "an", "the", "and", "but", "if", "or", "because", "as", "until",
+         "while", "of", "at", "by", "for", "with", "about", "against", "between", "into",
+         "through", "during", "before", "after", "above", "below", "to", "from", "up", "down",
+         "in", "out", "on", "off", "over", "under", "again", "further", "then", "once", "here",
+         "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more",
+         "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so",
+         "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now", "d",
+         "ll", "m", "o", "re", "ve", "y", "ain", "aren", "couldn", "didn", "doesn", "hadn",
+         "hasn", "haven", "isn", "ma", "mightn", "mustn", "needn", "shan", "shouldn", "wasn",
+         "weren", "won", "wouldn"])
+
+
+
+def load_history():
+    """Loads the conversation history from the JSON file."""
+    global chat_histories, current_chat_id
+    try:
+        if os.path.exists(history_file):
+            with open(history_file, "r") as f:
+                chat_histories = json.load(f)
+                if not isinstance(chat_histories, dict):
+                    logger.warning("History file was not a dictionary.  Starting with empty history.")
+                    chat_histories = {"default": []}
+                if "default" not in chat_histories:
+                    chat_histories["default"] = []
+                if chat_histories:
+                    current_chat_id = list(chat_histories.keys())[0]
+                else:
+                    current_chat_id = "default"
+        else:
+            chat_histories = {"default": []}
+    except json.JSONDecodeError:
+        logger.error("Could not decode existing history file. Starting with an empty history.")
+        chat_histories = {"default": []}
+    except Exception as e:
+        logger.error(f"Error loading history: {e}")
+        chat_histories = {"default": []}  # Ensure chat_histories is initialized
+
+
+
+def save_history():
+    """Saves the conversation history to the JSON file."""
+    global chat_histories
+    try:
+        with open(history_file, "w") as f:
+            json.dump(chat_histories, f, indent=4)
+    except Exception as e:
+        logger.error(f"Error saving history to file: {e}")
+
+
+
+def load_facts():
+    """Loads existing facts from the JSON file."""
+    global all_facts, all_facts_set, all_fact_texts
+    try:
+        if os.path.exists(facts_file):
+            with open(facts_file, "r") as f:
+                all_facts = json.load(f)
+                if not isinstance(all_facts, list):
+                    logger.warning("Facts file was not a list. Starting with empty facts.")
+                    all_facts = []
+                # Populate the set as well
+                with facts_set_lock:
+                    all_facts_set = {fact['id'] for fact in all_facts}  # Changed to store fact IDs
+                for fact in all_facts:
+                    all_fact_texts.append(fact['text'])
+        except json.JSONDecodeError:
+            logger.error("Could not decode existing facts file. Starting with an empty list.")
+            all_facts = []
+        except Exception as e:
+            logger.error(f"Error loading facts: {e}")
+            all_facts = []
+    else:
+        all_facts = []
+        all_facts_set = set()  # Initialize the set
+        all_fact_texts = []
+
+
+
+def save_facts():
+    """Saves the generated facts to the JSON file."""
+    global all_facts
+    try:
+        with open(facts_file, "w") as f:
+            json.dump(all_facts, f, indent=4)
+    except Exception as e:
+        logger.error(f"Error saving facts to file: {e}")
+
+
+
+def load_query_history():
+    """Loads the query history from the JSON file."""
+    global query_history
+    try:
+        if os.path.exists(query_history_file):
+            with open(query_history_file, "r") as f:
+                query_history = json.load(f)
+                if not isinstance(query_history, dict):
+                    logger.warning("Query history file was not a dictionary. Starting with empty history.")
+                    query_history = {}
+        except json.JSONDecodeError:
+            logger.error("Could not decode existing query history file. Starting with an empty history.")
+            query_history = {}
+        except Exception as e:
+            logger.error(f"Error loading query history: {e}")
+            query_history = {}
+    else:
+        query_history = {}
+
+
+
+def save_query_history():
+    """Saves the query history to the JSON file."""
+    global query_history
+    try:
+        with open(query_history_file, "w") as f:
+            json.dump(query_history, f, indent=4)
+    except Exception as e:
+        logger.error(f"Error saving query history to file: {e}")
+
+
+load_history()
+load_facts()
+load_query_history()
+
+def generate_fact_id():
+    """Generates a unique ID for each fact."""
+    return f"fact-{time.time()}-{random.randint(0, 1000000)}"
+
+
+
+def is_similar(new_fact_text, existing_fact_texts, similarity_threshold=0.85):
+    """
+    Checks if a new fact is similar to any existing fact using cosine similarity.
+
+    Args:
+        new_fact_text (str): The text of the new fact to check.
+        existing_fact_texts (list): A list of existing fact texts.
+        similarity_threshold (float): The threshold for similarity (default: 0.85).
+
+    Returns:
+        bool: True if the new fact is similar to an existing fact, False otherwise.
+    """
+    if not existing_fact_texts:
+        return False
+
+    vectors = vectorizer.transform([new_fact_text] + existing_fact_texts)
+    cosine_similarities = cosine_similarity(vectors[0:1], vectors[1:])
+    for similarity in cosine_similarities[0]:
+        if similarity >= similarity_threshold:
+            return True
+    return False
+
+
+
+def preprocess_text(text):
+    """
+    Preprocesses the text by removing stop words, punctuation, and lowercasing.
+
+    Args:
+        text (str): The text to preprocess.
+
+    Returns:
+        str: The preprocessed text.
+    """
+    text = re.sub(r'[^\w\s]', '', text, re.UNICODE)
+    text = text.lower()
+    tokens = word_tokenize(text)
+    tokens = [word for word in tokens if word not in stop_words]
+    return " ".join(tokens)
+
+
+
+async def send_request(user_text):
+    """
+    Sends a POST request to the Gemini API, extracts the text response,
+    handles potential errors, and stores the generated fact.
+    Takes user_text as an argument.  Implements exponential backoff and duplicate prevention.
+    Implements Adaptability and Context Awareness.  Uses asyncio and aiohttp.
+    """
+    global all_facts, all_facts_set, num_facts_per_request, similarity_threshold, query_history, vectorizer, all_fact_texts
+    delay = initial_delay
+    query_context = ""
+    adapted_query = user_text # start with the original user query
+    while delay <= max_delay:
+        try:
+            # --- Adaptability Start ---
+            # Check query history for this user_text
+            with query_history_lock:
+                if user_text in query_history:
+                    query_info = query_history[user_text]
+                    # Adapt query if it has been frequently irrelevant
+                    if query_info["irrelevant_count"] > 3:  # Threshold for adaptation
+                        logger.info(f"Adapting query: {user_text}")
+                        adapted_query = "Tell me relevant and concise facts.  Avoid unnecessary details. " + user_text
+                    query_context = query_info["context"]  # get context
+                else:
+                    query_history[user_text] = {
+                        "relevant_count": 0,
+                        "irrelevant_count": 0,
+                        "context": "",  # To store context of the query
+                        "timestamp": time.time(),
+                    }
+                    save_query_history()
+            # --- Adaptability End ---
+
+            # Define the data to send in the POST request.
+            data = {
+                "contents": [{
+                    "parts": [{
+                        "text": adapted_query
+                    }]
+                }]
+            }
+
+            # Make the POST request using aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.post(endpoint, json=data, headers=headers) as response:
+                    # Raise an exception for bad status codes (4xx or 5xx)
+                    response.raise_for_status()
+                    response_json = await response.json()
+
+
+
+            # Extract the text from the response
+            extracted_texts = []
+            if 'candidates' in response_json and len(response_json['candidates']) > 0:
+                for candidate in response_json['candidates']:  # Iterate through candidates
+                    if 'content' in candidate and 'parts' in candidate['content'] and len(candidate['content']['parts']) > 0:
+                        part = candidate['content']['parts'][0]
+                        if 'text' in part:
+                            extracted_texts.append(part['text'])
+                        else:
+                            logger.error("'text' not found in response part")
+                            break  # Exit the loop, handle error
+                    else:
+                        logger.error("'content' or 'parts' not found in candidate")
+                        break  # Exit the loop, handle error
+                if len(extracted_texts) != len(response_json['candidates']):
+                    logger.error("Number of extracted texts does not match number of candidates.")
+                    continue  # Go to the next iteration of the while loop
+            else:
+                logger.error("'candidates' not found or is empty in response")
+                continue  # Go to the next iteration of the while loop
+
+            if extracted_texts:
+                new_facts_added = 0
+                with facts_set_lock:
+                    existing_fact_texts = [fact['text'] for fact in all_facts]  # Get text for similarity check
+                    for extracted_text in extracted_texts:
+                        preprocessed_text = preprocess_text(extracted_text)
+                        if not is_similar(preprocessed_text, existing_fact_texts, similarity_threshold):
+                            # --- Context Awareness Start ---
+                            # Determine context (Improved)
+                            if "history" in user_text.lower() or "past" in user_text.lower():
+                                query_context = "history"
+                            elif "science" in user_text.lower() or "physics" in user_text.lower() or "chemistry" in user_text.lower():
+                                query_context = "science"
+                            elif "geography" in user_text.lower() or "countries" in user_text.lower() or "cities" in user_text.lower():
+                                query_context = "geography"
+                            else:
+                                query_context = "general"
+                            # --- Context Awareness End ---
+
+                            # Generate unique ID
+                            fact_id = generate_fact_id()
+                            new_fact = {
+                                'id': fact_id,
+                                'text': extracted_text,
+                                'topic': query_context,  # Store the context as topic
+                                'source': 'Gemini API',  # Add source information
+                                'timestamp': time.time()
+                            }
+                            # Print the extracted text (the fact)
+                            logger.info(f"{extracted_text}  (Context: {query_context})")
+                            # Store the extracted text (fact) in the global list
+                            with facts_lock:
+                                all_facts.append(new_fact)
+                                all_fact_texts.append(preprocessed_text)  # Use preprocessed text for vectorizer
+                            all_facts_set.add(fact_id)  # add the ID to the set
+                            new_facts_added += 1
+                            if new_facts_added >= num_facts_per_request:
+                                break  # stop adding حقائق if we have enough
+                    if all_fact_texts:
+                         vectorizer.fit(all_fact_texts)
+                    save_facts()
+                    logger.info(f"{new_facts_added} facts saved to {facts_file}")
+
+                # --- Adaptability Start ---
+                # Update query history
+                with query_history_lock:
+                    if new_facts_added > 0:
+                        query_history[user_text]["relevant_count"] += 1
+                    else:
+                        query_history[user_text]["irrelevant_count"] += 1
+                    query_history[user_text]["context"] = query_context  # save the context
+                    query_history[user_text]["timestamp"] = time.time()
+                    save_query_history()
+                # --- Adaptability End ---
+            return  # Exit the function after successful processing
+
+        except aiohttp.ClientError as e:
+            logger.error(f"Error sending request: {e}")
+            if e.status == 429:  #check for status code.
+                logger.warning(f"Rate limit exceeded.  Retrying in {delay} seconds...")
+                await asyncio.sleep(delay)
+                delay *= backoff_factor  # Exponential backoff
+            else:
+                logger.error(f"An unexpected error occurred: {e}")
+                break
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
+            break
+
+
+
+def get_user_topic():
+    """
+    Gets the topic from the user, either by prompting for input or presenting a list of predefined topics.
+    Validates user input.
+    """
+    while True:
+        print("Do you want to provide a topic or choose from a list?")
+        choice = input("Type 'provide' or 'choose': ").lower()
+        if choice == 'provide':
+            topic = input("Enter the topic you want facts about: ")
+            if not topic:  # Input validation: check for empty topic
+                print("Topic cannot be empty. Please provide a valid topic.")
+                continue
+            return topic
+        elif choice == 'choose':
+            print("Here are some predefined topics:")
+            for i, topic in enumerate(predefined_topics):
+                print(f"{i + 1}. {topic}")
+            while True:
+                try:
+                    topic_index = int(input("Enter the number of the topic: ")) - 1
+                    if 0 <= topic_index < len(predefined_topics):
+                        return predefined_topics[topic_index]
+                    else:
+                        print("Invalid topic number. Please choose from the list.")
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
+        else:
+            print("Invalid choice. Please type 'provide' or 'choose'.")
+
+
+
+async def continuous_requests():
+    """
+    Continuously sends requests to the API in a loop with a delay,
+    now generating fact requests based on user-provided or selected topic.
+    Uses asyncio.sleep.
+    """
+    global all_facts, num_facts_per_request
+    while True:
+        topic = get_user_topic()  # Get topic from the user
+        prompt = f"Tell me {num_facts_per_request} facts about {topic}."
+        await send_request(prompt)
+        await asyncio.sleep(1)  # Use asyncio.sleep(1)
+
+
+
+# AI 2: User Interaction
+def get_relevant_facts(query, num_facts=3):
+    """
+    Retrieves relevant facts from the stored fact base based on user query.
+    Implements TF-IDF and cosine similarity for relevance.
+
+    Args:
+        query (str): The user's query.
+        num_facts (int): The number of facts to retrieve. Defaults to 3.
+
+    Returns:
+        list: A list of relevant facts (dictionaries).
+    """
+    global all_facts, vectorizer, all_fact_texts
+
+    if not all_facts:
+        return ["I'm sorry, I couldn't find any facts in my database."]
+
+    preprocessed_query = preprocess_text(query)  # Preprocess the query
+    try:
+        query_vector = vectorizer.transform([preprocessed_query])  # Vectorize the query
+        fact_texts = [fact['text'] for fact in all_facts]
+        fact_vectors = vectorizer.transform(fact_texts)  # Vectorize all facts
+        cosine_similarities = cosine_similarity(query_vector, fact_vectors)[0]
+
+        # Sort facts by similarity
+        fact_similarity_pairs = list(zip(all_facts, cosine_similarities))
+        fact_similarity_pairs.sort(key=lambda x: x[1], reverse=True)  # Sort by similarity
+
+        relevant_facts = [fact for fact, similarity in fact_similarity_pairs[:num_facts]]  # Get the top n facts
+        if not relevant_facts:
+            return ["I'm sorry, I couldn't find any relevant facts in my database."]
+        return relevant_facts
+    except ValueError as e:
+        logger.error(f"Error in get_relevant_facts: {e}")
+        return ["I'm sorry, I encountered an error while retrieving facts."]
+
+
+
+def start_user_interaction():
+    """
+    Starts the user interaction loop.
+    Handles user input, retrieves facts, and presents them in a conversational manner.
+    """
+    global chat_histories, current_chat_id
+    print("Welcome to the Fact Retrieval System!")
+    current_chat_id = input("Enter a Chat ID (or press Enter for default): ")
+    if not current_chat_id:
+        current_chat_id = "default"
+    if current_chat_id not in chat_histories:
+        chat_histories[current_chat_id] = []
+    while True:
+        query = input("You: ")
+        if query.lower() in ["exit", "quit", "bye"]:
+            print("Goodbye!")
+            break
+        facts = get_relevant_facts(query)  # Get facts, now a list of dictionaries
+        print("AI Assistant:")
+        for fact in facts:
+            print(f"- {fact['text']} (Source: {fact['source']}, Topic: {fact['topic']})")  # Display fact details
+
+        # Store interaction in history
+        chat_histories[current_chat_id].append({"role": "user", "text": query})
+        chat_histories[current_chat_id].append(
+            {"role": "assistant",
+             "text": "\n".join([f"- {fact['text']} (Source: {fact['source']}, Topic: {fact['topic']})" for fact in facts])})
+        save_history()  # Save after each turn
+
+        # Basic conversation context (for demonstration)
+        if "what is" in query.lower():
+            print("AI Assistant: That's an interesting question! I'm glad you asked.")
+
+
+
+
+if __name__ == "__main__":
+    # Start the continuous requests using asyncio.
+    asyncio.run(continuous_requests())
+    # start_user_interaction() # Removed this.
+

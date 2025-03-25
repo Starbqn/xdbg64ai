@@ -5,6 +5,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 from process_simulator import ProcessSimulator
 from memory_editor import MemoryEditor, MemoryDisplay
 from process_bridge import ProcessBridge, ProcessType
+from memory_ai_assistant import MemoryAIAssistant
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -20,6 +21,9 @@ memory_editor = MemoryEditor(process_simulator)
 
 # Initialize the process bridge for real process support
 process_bridge = ProcessBridge(process_simulator)
+
+# Initialize the AI assistant for memory operations
+ai_assistant = MemoryAIAssistant(memory_editor, process_bridge)
 
 # Sample processes for demonstration
 process_simulator.create_process("Calculator", {"0x1000": 42, "0x1004": 3.14, "0x1008": "Hello"})
