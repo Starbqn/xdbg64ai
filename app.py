@@ -425,6 +425,37 @@ def set_display_format():
         logger.error(f"Error setting display format: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/ai_assistant/<process_id>', methods=['POST'])
+def ai_assistant_query(process_id):
+    """API endpoint for AI assistant to handle natural language queries about memory"""
+    data = request.json
+    query = data.get('query')
+    process_type = data.get('process_type', ProcessType.SIMULATED)
+    
+    if not query:
+        return jsonify({"success": False, "error": "Query is required"}), 400
+    
+    try:
+        # Check if process exists first
+        if process_type == ProcessType.SIMULATED:
+            process = process_simulator.get_process(process_id)
+            if not process:
+                return jsonify({"success": False, "error": f"Process {process_id} not found"}), 404
+        else:
+            # For real processes, this is a bit trickier - we'll assume it exists
+            pass
+            
+        # Pass the query to our AI assistant
+        response = ai_assistant.handle_user_query(query, process_id, process_type)
+        
+        return jsonify({
+            "success": True, 
+            "response": response
+        })
+    except Exception as e:
+        logger.error(f"Error processing AI query: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/process', methods=['POST'])
 def create_process():
     """API endpoint to create a new simulated process"""
