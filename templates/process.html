@@ -1405,6 +1405,108 @@
 
         // Initialize the debugger state on page load
         refreshDebugState();
+
+        // AI Assistant functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const aiForm = document.getElementById('ai-assistant-form');
+            const aiQuery = document.getElementById('ai-query');
+            const aiResponse = document.getElementById('ai-response');
+            const aiSubmitBtn = document.getElementById('ai-submit-btn');
+            const aiLoadingSpinner = document.getElementById('ai-loading-spinner');
+
+            if (aiForm) {
+                aiForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const query = aiQuery.value.trim();
+                    if (!query) return;
+                    
+                    // Show loading spinner
+                    aiSubmitBtn.disabled = true;
+                    aiLoadingSpinner.classList.remove('d-none');
+                    aiResponse.innerHTML = 'Processing your query...';
+                    
+                    // Get process ID and type
+                    const processId = '{{ process.pid }}';
+                    const processType = '{{ process_type }}';
+                    
+                    // Send request to AI assistant API
+                    fetch(`/api/ai_assistant/${processId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            process_type: processType
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide loading spinner
+                        aiSubmitBtn.disabled = false;
+                        aiLoadingSpinner.classList.add('d-none');
+                        
+                        if (data.success) {
+                            // Display AI response
+                            aiResponse.innerHTML = data.response;
+                        } else {
+                            // Display error
+                            aiResponse.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                        }
+                    })
+                    .catch(error => {
+                        // Hide loading spinner and show error
+                        aiSubmitBtn.disabled = false;
+                        aiLoadingSpinner.classList.add('d-none');
+                        aiResponse.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                    });
+                });
+            }
+        });
     </script>
+    
+    <!-- AI Assistant Modal -->
+    <div class="modal fade" id="aiAssistantModal" tabindex="-1" aria-labelledby="aiAssistantModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="aiAssistantModalLabel">AI Memory Assistant</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="lead">Ask me to help you find and modify memory values using natural language.</p>
+                    <p>Examples:</p>
+                    <ul>
+                        <li>"Find all instances of the value 100 in memory"</li>
+                        <li>"Change the value at address 0x1000 to 500"</li>
+                        <li>"Show me all memory addresses containing text strings"</li>
+                    </ul>
+                    
+                    <form id="ai-assistant-form" class="mt-4">
+                        <div class="mb-3">
+                            <label for="ai-query" class="form-label">Your Query</label>
+                            <input type="text" class="form-control" id="ai-query" 
+                                   placeholder="E.g., Find memory locations with value 42" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="ai-submit-btn">
+                            <span>Submit Query</span>
+                            <span id="ai-loading-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                    </form>
+                    
+                    <div class="mt-4">
+                        <h6>Response:</h6>
+                        <div id="ai-response" class="p-3 border rounded bg-dark">
+                            <em>AI response will appear here</em>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
