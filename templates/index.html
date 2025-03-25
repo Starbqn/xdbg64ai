@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Editor</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        .memory-editor-header {
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            background-color: var(--bs-dark);
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        .process-card {
+            transition: transform 0.2s;
+            margin-bottom: 1rem;
+        }
+        .process-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <header class="memory-editor-header">
+        <div class="container">
+            <h1 class="display-4">Memory Editor</h1>
+            <p class="lead">Attach to simulated processes and edit memory values</p>
+        </div>
+    </header>
+
+    <div class="container">
+        {% if error %}
+        <div class="alert alert-danger" role="alert">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}" role="alert">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Available Processes</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if processes %}
+                            <div class="row">
+                                {% for process in processes %}
+                                <div class="col-md-6">
+                                    <div class="card process-card">
+                                        <div class="card-body">
+                                            <h5 class="card-title">{{ process.name }}</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">PID: {{ process.pid }}</h6>
+                                            <p class="card-text">Memory regions: {{ process.memory|length }}</p>
+                                            <a href="{{ url_for('view_process', process_id=process.pid) }}" class="btn btn-primary">Examine Memory</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="text-muted">No processes available.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Create New Process</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="create-process-form">
+                            <div class="mb-3">
+                                <label for="processName" class="form-label">Process Name</label>
+                                <input type="text" class="form-control" id="processName" required>
+                            </div>
+                            <button type="submit" class="btn btn-success">Create Process</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">About Memory Editor</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>This is a barebones memory editor that allows you to attach to simulated processes, read and write memory values, and display them in a simple interface.</p>
+                        <p>Features:</p>
+                        <ul>
+                            <li>Process attachment capability</li>
+                            <li>Memory reading and writing</li>
+                            <li>Support for different data types (int, float, string)</li>
+                            <li>Simulated process creation</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('create-process-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('processName').value;
+            
+            fetch('/api/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: name
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/process/' + data.process_id;
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Error creating process. Please try again.');
+            });
+        });
+    </script>
+</body>
+</html>
