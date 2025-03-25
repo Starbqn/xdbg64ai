@@ -184,7 +184,8 @@ class WindowsProcessConnector(RealProcessConnector):
             return False
         
         try:
-            self.win32api.CloseHandle(self.process_handle)
+            if self.process_handle is not None:
+                self.win32api.CloseHandle(self.process_handle)
             self.process_handle = None
             self.attached_pid = None
             logger.info("Successfully detached from process")
@@ -206,7 +207,7 @@ class WindowsProcessConnector(RealProcessConnector):
             bytes_read = ctypes.c_size_t(0)
             
             result = kernel32.ReadProcessMemory(
-                int(self.process_handle), 
+                int(self.process_handle) if self.process_handle is not None else 0, 
                 ctypes.c_void_p(address), 
                 buffer, 
                 size, 
@@ -237,7 +238,7 @@ class WindowsProcessConnector(RealProcessConnector):
             bytes_written = ctypes.c_size_t(0)
             
             result = kernel32.WriteProcessMemory(
-                int(self.process_handle), 
+                int(self.process_handle) if self.process_handle is not None else 0, 
                 ctypes.c_void_p(address), 
                 buffer, 
                 size, 
@@ -282,7 +283,7 @@ class WindowsProcessConnector(RealProcessConnector):
             
             while True:
                 result = kernel32.VirtualQueryEx(
-                    int(self.process_handle),
+                    int(self.process_handle) if self.process_handle is not None else 0,
                     ctypes.c_void_p(address),
                     ctypes.byref(mbi),
                     ctypes.sizeof(mbi)

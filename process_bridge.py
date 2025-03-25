@@ -55,7 +55,7 @@ class ProcessBridge:
     
     def list_real_processes(self) -> List[Dict[str, Any]]:
         """List all real processes on the system"""
-        if not self.has_real_connector:
+        if not self.has_real_connector or self.real_connector is None:
             logger.warning("Real process listing not available")
             return []
         
@@ -98,7 +98,7 @@ class ProcessBridge:
         if process_type == ProcessType.SIMULATED:
             # Detach from any real process first
             if self.current_type == ProcessType.REAL and self.current_id:
-                if self.has_real_connector:
+                if self.has_real_connector and self.real_connector is not None:
                     self.real_connector.detach_from_process()
             
             # Now attach to the simulated process

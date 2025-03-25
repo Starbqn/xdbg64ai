@@ -451,6 +451,175 @@ def delete_process(process_id):
 def page_not_found(e):
     return render_template('index.html', error="Page not found"), 404
 
+@app.route('/api/real-memory/<process_id>', methods=['GET'])
+def get_real_memory(process_id):
+    """API endpoint to get memory values from a real process"""
+    try:
+        if not process_bridge.attach_to_process(process_id, ProcessType.REAL):
+            return jsonify({"success": False, "error": f"Could not attach to process {process_id}"}), 400
+        
+        memory_map = process_bridge.get_memory_map()
+        
+        # Detach from the process when done
+        process_bridge.detach_from_process()
+        
+        return jsonify({"success": True, "memory": memory_map})
+    except Exception as e:
+        logger.error(f"Error reading real process memory: {e}")
+        try:
+            process_bridge.detach_from_process()
+        except:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/real-memory-regions/<process_id>', methods=['GET'])
+def get_real_memory_regions(process_id):
+    """API endpoint to get memory regions from a real process"""
+    try:
+        if not process_bridge.attach_to_process(process_id, ProcessType.REAL):
+            return jsonify({"success": False, "error": f"Could not attach to process {process_id}"}), 400
+        
+        regions = process_bridge.get_memory_regions()
+        
+        # Convert to JSON-serializable format
+        regions_json = []
+        for region in regions:
+            regions_json.append({
+                "base_address": region.base_address if hasattr(region, "base_address") else str(region.get("base_address", "unknown")),
+                "size": region.size if hasattr(region, "size") else region.get("size", 0),
+                "protection": region.protection if hasattr(region, "protection") else region.get("protection", "---"),
+                "type": region.type if hasattr(region, "type") else region.get("type", "unknown"),
+                "mapped_file": region.mapped_file if hasattr(region, "mapped_file") else region.get("mapped_file", "")
+            })
+        
+        # Detach from the process when done
+        process_bridge.detach_from_process()
+        
+        return jsonify({"success": True, "regions": regions_json})
+    except Exception as e:
+        logger.error(f"Error getting real process memory regions: {e}")
+        try:
+            process_bridge.detach_from_process()
+        except:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/real-memory-view/<process_id>', methods=['GET'])
+def view_real_memory(process_id):
+    """API endpoint to view memory at a specific address in a real process"""
+    try:
+        address = request.args.get('address')
+        size = int(request.args.get('size', 64))
+        format_type = request.args.get('format', 'hex')
+        
+        if not address:
+            return jsonify({"success": False, "error": "Address is required"}), 400
+        
+        if size <= 0 or size > 4096:
+            return jsonify({"success": False, "error": "Size must be between 1 and 4096 bytes"}), 400
+            
+        if not process_bridge.attach_to_process(process_id, ProcessType.REAL):
+            return jsonify({"success": False, "error": f"Could not attach to process {process_id}"}), 400
+        
+        # Convert address string to int if needed
+        addr_value = int(address, 16) if address.startswith('0x') else int(address)
+        
+        # Read raw memory
+        memory_bytes = process_bridge.read_memory(str(addr_value), size)
+        
+        if not memory_bytes:
+            process_bridge.detach_from_process()
+            return jsonify({"success": False, "error": f"Could not read memory at address {address}"}), 400
+        
+        # Format the memory for display based on the requested format
+        memory_map = {}
+        
+        if format_type == 'hex':
+            # Just return the raw bytes in hex format
+            bytes_hex = [format(b, '02x') for b in memory_bytes]
+            process_bridge.detach_from_process()
+            return jsonify({"success": True, "bytes": bytes_hex})
+        else:
+            # Process the bytes into structured memory entries
+            for i in range(0, min(len(memory_bytes), size), 8):
+                if i + 8 <= len(memory_bytes):
+                    chunk = memory_bytes[i:i+8]
+                    addr = f"0x{(addr_value + i):x}"
+                    
+                    # Convert based on format
+                    if format_type == 'decimal':
+                        # Interpret as 64-bit integer
+                        value = int.from_bytes(chunk, byteorder='little')
+                        memory_map[addr] = {
+                            "value": value,
+                            "type": "int64",
+                            "hex": ' '.join([format(b, '02x') for b in chunk])
+                        }
+                    elif format_type == 'ascii':
+                        # Interpret as ASCII string
+                        value = ''.join([chr(b) if 32 <= b <= 126 else '.' for b in chunk])
+                        memory_map[addr] = {
+                            "value": value,
+                            "type": "ascii",
+                            "hex": ' '.join([format(b, '02x') for b in chunk])
+                        }
+                    else:
+                        # Default to mixed format
+                        int_value = int.from_bytes(chunk, byteorder='little')
+                        ascii_value = ''.join([chr(b) if 32 <= b <= 126 else '.' for b in chunk])
+                        memory_map[addr] = {
+                            "value": int_value,
+                            "ascii": ascii_value,
+                            "type": "mixed",
+                            "hex": ' '.join([format(b, '02x') for b in chunk])
+                        }
+        
+        # Detach from the process when done
+        process_bridge.detach_from_process()
+        
+        return jsonify({"success": True, "memory": memory_map})
+    except Exception as e:
+        logger.error(f"Error viewing real process memory: {e}")
+        try:
+            process_bridge.detach_from_process()
+        except:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/real-memory-write/<process_id>', methods=['POST'])
+def write_real_memory(process_id):
+    """API endpoint to write memory values to a real process"""
+    try:
+        data = request.json
+        address = data.get('address')
+        value = data.get('value')
+        data_type = data.get('type', 'int')
+        
+        if not address or value is None:
+            return jsonify({"success": False, "error": "Address and value are required"}), 400
+            
+        if not process_bridge.attach_to_process(process_id, ProcessType.REAL):
+            return jsonify({"success": False, "error": f"Could not attach to process {process_id}"}), 400
+        
+        # Write the value to memory
+        success = process_bridge.write_memory(address, value, data_type)
+        
+        # Detach from the process when done
+        process_bridge.detach_from_process()
+        
+        if success:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "error": f"Failed to write to memory at {address}"}), 400
+    except Exception as e:
+        logger.error(f"Error writing real process memory: {e}")
+        try:
+            process_bridge.detach_from_process()
+        except:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.errorhandler(500)
 def server_error(e):
+    logger.error(f"Server error: {e}")
     return render_template('index.html', error="Internal server error"), 500
