@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>x64dbg Lite - Real Process: {{ process.name }}</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        .memory-editor-header {
+            padding: 1.5rem 0;
+            margin-bottom: 1.5rem;
+            background-color: var(--bs-dark);
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        .memory-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .memory-item:hover {
+            background-color: rgba(var(--bs-secondary-rgb), 0.1);
+        }
+        .memory-address {
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .memory-value {
+            font-family: monospace;
+        }
+        .memory-hex {
+            font-family: monospace;
+            color: var(--bs-info);
+        }
+        .btn-back {
+            margin-bottom: 1rem;
+        }
+        .memory-region {
+            font-family: monospace;
+            padding: 0.25rem 0.5rem;
+        }
+        .memory-region:hover {
+            background-color: rgba(var(--bs-secondary-rgb), 0.1);
+        }
+        .system-badge {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            margin-left: 1rem;
+        }
+        .memory-protection {
+            display: inline-block;
+            min-width: 2.5rem;
+            text-align: center;
+        }
+        .memory-protection-r {
+            color: var(--bs-success);
+        }
+        .memory-protection-w {
+            color: var(--bs-warning);
+        }
+        .memory-protection-x {
+            color: var(--bs-danger);
+        }
+        .memory-protection-none {
+            color: var(--bs-secondary);
+        }
+        .tab-pane {
+            padding-top: 1rem;
+        }
+        .alert-system {
+            background-color: rgba(var(--bs-info-rgb), 0.1);
+            border-color: var(--bs-info);
+            color: var(--bs-info);
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <header class="memory-editor-header">
+        <div class="container">
+            <h1 class="display-5">
+                x64dbg Lite - Real Process 
+                <span class="badge bg-danger">{{ process.name }}</span>
+                <span class="badge bg-info system-badge">{{ system }}</span>
+            </h1>
+            <p class="lead">PID: {{ process.pid }}</p>
+            {% if process.path %}
+                <p class="small text-muted">Path: {{ process.path }}</p>
+            {% endif %}
+        </div>
+    </header>
+
+    <div class="container">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-back">
+            <i class="bi bi-arrow-left"></i> Back to Processes
+        </a>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}" role="alert">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- System Warning -->
+        <div class="alert alert-system mb-4" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>System Access Warning:</strong> 
+            {% if system == 'Windows' %}
+                You are debugging a real Windows process. Memory access may be restricted by the operating system.
+                Administrative privileges may be required for certain operations.
+            {% elif system == 'Linux' %}
+                You are debugging a real Linux process. Memory access may be restricted by the operating system.
+                Root privileges may be required for certain operations.
+            {% elif system == 'Darwin' %}
+                You are debugging a real macOS process. Memory access may be highly restricted by System Integrity Protection.
+                Many operations may not work as expected.
+            {% else %}
+                You are debugging a real process on an unknown system. Memory access may be restricted.
+            {% endif %}
+        </div>
+
+        <!-- Main Content Tabs -->
+        <ul class="nav nav-tabs" id="debuggerTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="memory-regions-tab" data-bs-toggle="tab" data-bs-target="#memory-regions-pane" type="button" role="tab" aria-controls="memory-regions-pane" aria-selected="true">Memory Regions</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="memory-tab" data-bs-toggle="tab" data-bs-target="#memory-pane" type="button" role="tab" aria-controls="memory-pane" aria-selected="false">Memory Viewer</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="hex-tab" data-bs-toggle="tab" data-bs-target="#hex-pane" type="button" role="tab" aria-controls="hex-pane" aria-selected="false">Hex Editor</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="debuggerTabContent">
+            <!-- Memory Regions Tab -->
+            <div class="tab-pane fade show active" id="memory-regions-pane" role="tabpanel" aria-labelledby="memory-regions-tab">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Memory Regions</h5>
+                                <button class="btn btn-sm btn-primary" id="refresh-regions">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Address</th>
+                                                <th>Size</th>
+                                                <th>Protection</th>
+                                                <th>Type</th>
+                                                <th>Mapped File</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="memory-regions-table">
+                                            {% if memory_regions %}
+                                                {% for region in memory_regions %}
+                                                <tr class="memory-region" data-address="{{ region.base_address }}">
+                                                    <td class="memory-address">{{ region.base_address }}</td>
+                                                    <td>{{ region.size }} bytes</td>
+                                                    <td>
+                                                        <span class="memory-protection">
+                                                            {% if 'r' in region.protection %}
+                                                                <span class="memory-protection-r">R</span>
+                                                            {% else %}
+                                                                <span class="memory-protection-none">-</span>
+                                                            {% endif %}
+                                                            
+                                                            {% if 'w' in region.protection %}
+                                                                <span class="memory-protection-w">W</span>
+                                                            {% else %}
+                                                                <span class="memory-protection-none">-</span>
+                                                            {% endif %}
+                                                            
+                                                            {% if 'x' in region.protection %}
+                                                                <span class="memory-protection-x">X</span>
+                                                            {% else %}
+                                                                <span class="memory-protection-none">-</span>
+                                                            {% endif %}
+                                                        </span>
+                                                    </td>
+                                                    <td>{{ region.type }}</td>
+                                                    <td>{{ region.mapped_file or '—' }}</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-info view-region-btn" data-address="{{ region.base_address }}">
+                                                            View
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="6" class="text-center">No memory regions available.</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Viewer Tab -->
+            <div class="tab-pane fade" id="memory-pane" role="tabpanel" aria-labelledby="memory-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Memory Samples</h5>
+                                <div>
+                                    <button class="btn btn-sm btn-primary" id="refresh-memory">
+                                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <p class="text-muted small">For real processes, only a sample of memory is shown for performance and security reasons.</p>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Address</th>
+                                                <th>Value</th>
+                                                <th>Type</th>
+                                                <th>Hex</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="memory-table">
+                                            {% if memory_map %}
+                                                {% for address, data in memory_map.items() %}
+                                                <tr class="memory-item" data-address="{{ address }}" data-type="{{ data.type }}">
+                                                    <td class="memory-address">{{ address }}</td>
+                                                    <td class="memory-value">{{ data.value }}</td>
+                                                    <td>{{ data.type }}</td>
+                                                    <td class="memory-hex">{{ data.hex }}</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-warning edit-memory-btn">Edit</button>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="5" class="text-center">No memory data available.</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Memory Address</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="view-memory-form">
+                                    <div class="mb-3">
+                                        <label for="viewAddress" class="form-label">Address</label>
+                                        <input type="text" class="form-control" id="viewAddress" placeholder="e.g. 0x1000">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="viewSize" class="form-label">Size (bytes)</label>
+                                        <input type="number" class="form-control" id="viewSize" value="64" min="1" max="4096">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">View Memory</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Edit Memory</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="edit-memory-form">
+                                    <div class="mb-3">
+                                        <label for="memoryAddress" class="form-label">Address</label>
+                                        <input type="text" class="form-control" id="memoryAddress" readonly>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="memoryType" class="form-label">Type</label>
+                                        <select class="form-select" id="memoryType">
+                                            <option value="int">Integer</option>
+                                            <option value="float">Float</option>
+                                            <option value="string">String</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="memoryValue" class="form-label">Value</label>
+                                        <input type="text" class="form-control" id="memoryValue" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary" id="save-memory-btn">Save Changes</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hex Editor Tab -->
+            <div class="tab-pane fade" id="hex-pane" role="tabpanel" aria-labelledby="hex-tab">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Hex Editor</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="hexEditorAddress" placeholder="Memory Address (e.g. 0x1000)">
+                                        <input type="number" class="form-control" id="hexEditorSize" placeholder="Size in bytes" value="256" min="16" max="4096">
+                                        <button class="btn btn-primary" id="loadHexEditorBtn">Load</button>
+                                    </div>
+                                </div>
+
+                                <div id="hexEditorContainer" class="font-monospace bg-dark p-3" style="min-height: 400px; overflow: auto;">
+                                    <p class="text-center text-muted">Enter an address and click "Load" to view memory in hex format</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for confirming memory write -->
+    <div class="modal fade" id="confirmWriteModal" tabindex="-1" aria-labelledby="confirmWriteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmWriteModalLabel">Confirm Memory Write</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <strong>Warning:</strong> Writing to memory in a real process can be dangerous and may cause the process to crash or behave unexpectedly.
+                    </div>
+                    <p><strong>Address:</strong> <span id="confirm-address"></span></p>
+                    <p><strong>New Value:</strong> <span id="confirm-value"></span></p>
+                    <p><strong>Type:</strong> <span id="confirm-type"></span></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-write-btn">Write Memory</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store the process ID for use in API calls
+        const processId = "{{ process.pid }}";
+        const processType = "{{ process_type }}";
+        
+        // Cache DOM elements
+        const memoryTable = document.getElementById('memory-table');
+        const memoryRegionsTable = document.getElementById('memory-regions-table');
+        const editMemoryForm = document.getElementById('edit-memory-form');
+        const viewMemoryForm = document.getElementById('view-memory-form');
+        const memoryAddressInput = document.getElementById('memoryAddress');
+        const viewAddressInput = document.getElementById('viewAddress');
+        const viewSizeInput = document.getElementById('viewSize');
+        const memoryTypeSelect = document.getElementById('memoryType');
+        const memoryValueInput = document.getElementById('memoryValue');
+        const refreshMemoryBtn = document.getElementById('refresh-memory');
+        const refreshRegionsBtn = document.getElementById('refresh-regions');
+        const hexEditorAddress = document.getElementById('hexEditorAddress');
+        const hexEditorSize = document.getElementById('hexEditorSize');
+        const loadHexEditorBtn = document.getElementById('loadHexEditorBtn');
+        const hexEditorContainer = document.getElementById('hexEditorContainer');
+        
+        // Modal elements
+        const confirmWriteModal = new bootstrap.Modal(document.getElementById('confirmWriteModal'));
+        const confirmAddressSpan = document.getElementById('confirm-address');
+        const confirmValueSpan = document.getElementById('confirm-value');
+        const confirmTypeSpan = document.getElementById('confirm-type');
+        const confirmWriteBtn = document.getElementById('confirm-write-btn');
+        
+        // Add event listener for view region buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('view-region-btn')) {
+                const address = e.target.dataset.address;
+                // Switch to memory viewer tab
+                const memoryTab = document.getElementById('memory-tab');
+                if (memoryTab) {
+                    bootstrap.Tab.getOrCreateInstance(memoryTab).show();
+                }
+                // Set the address in the view form
+                if (viewAddressInput) {
+                    viewAddressInput.value = address;
+                }
+            }
+        });
+        
+        // Add event listener to the table for edit buttons
+        if (memoryTable) {
+            memoryTable.addEventListener('click', function(e) {
+                if (e.target.classList.contains('edit-memory-btn')) {
+                    const row = e.target.closest('tr');
+                    const address = row.dataset.address;
+                    const type = row.dataset.type;
+                    const value = row.querySelector('.memory-value').textContent;
+                    
+                    // Fill the edit form
+                    memoryAddressInput.value = address;
+                    memoryTypeSelect.value = type;
+                    memoryValueInput.value = value;
+                    
+                    // Scroll to the edit form
+                    editMemoryForm.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
+        
+        // Handle edit memory form submission
+        if (editMemoryForm) {
+            editMemoryForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const address = memoryAddressInput.value;
+                const type = memoryTypeSelect.value;
+                const value = memoryValueInput.value;
+                
+                // Show confirmation modal
+                confirmAddressSpan.textContent = address;
+                confirmValueSpan.textContent = value;
+                confirmTypeSpan.textContent = type;
+                confirmWriteModal.show();
+            });
+        }
+        
+        // Handle confirm write button click
+        if (confirmWriteBtn) {
+            confirmWriteBtn.addEventListener('click', function() {
+                const address = memoryAddressInput.value;
+                const type = memoryTypeSelect.value;
+                const value = memoryValueInput.value;
+                
+                // Write to memory
+                writeMemory(address, value, type);
+                
+                // Hide modal
+                confirmWriteModal.hide();
+            });
+        }
+        
+        // Handle view memory form submission
+        if (viewMemoryForm) {
+            viewMemoryForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const address = viewAddressInput.value;
+                const size = parseInt(viewSizeInput.value, 10);
+                
+                // View memory at this address
+                viewMemory(address, size);
+            });
+        }
+        
+        // Handle memory refresh button click
+        if (refreshMemoryBtn) {
+            refreshMemoryBtn.addEventListener('click', function() {
+                refreshMemory();
+            });
+        }
+        
+        // Handle memory regions refresh button click
+        if (refreshRegionsBtn) {
+            refreshRegionsBtn.addEventListener('click', function() {
+                refreshMemoryRegions();
+            });
+        }
+        
+        // Handle hex editor load button click
+        if (loadHexEditorBtn) {
+            loadHexEditorBtn.addEventListener('click', function() {
+                const address = hexEditorAddress.value;
+                const size = parseInt(hexEditorSize.value, 10);
+                
+                loadHexEditor(address, size);
+            });
+        }
+        
+        // Function to refresh memory display
+        function refreshMemory() {
+            // For real processes, we need a custom endpoint
+            fetch(`/api/real-memory/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateMemoryTable(data.memory);
+                    } else {
+                        showAlert('Error: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error refreshing memory data. Please try again.', 'danger');
+                });
+        }
+        
+        // Function to refresh memory regions
+        function refreshMemoryRegions() {
+            fetch(`/api/real-memory-regions/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateMemoryRegionsTable(data.regions);
+                    } else {
+                        showAlert('Error: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error refreshing memory regions. Please try again.', 'danger');
+                });
+        }
+        
+        // Function to view memory at a specific address
+        function viewMemory(address, size) {
+            fetch(`/api/real-memory-view/${processId}?address=${address}&size=${size}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update the memory table with the viewed data
+                        updateMemoryTable(data.memory);
+                    } else {
+                        showAlert('Error: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error viewing memory. Please try again.', 'danger');
+                });
+        }
+        
+        // Function to load the hex editor with data
+        function loadHexEditor(address, size) {
+            fetch(`/api/real-memory-view/${processId}?address=${address}&size=${size}&format=hex`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateHexEditor(address, data.bytes, size);
+                    } else {
+                        showAlert('Error: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error loading hex editor. Please try again.', 'danger');
+                });
+        }
+        
+        // Function to update the memory table with new data
+        function updateMemoryTable(memoryMap) {
+            if (!memoryTable) return;
+            
+            memoryTable.innerHTML = '';
+            
+            if (!memoryMap || Object.keys(memoryMap).length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="5" class="text-center">No memory data available.</td>';
+                memoryTable.appendChild(row);
+                return;
+            }
+            
+            for (const [address, data] of Object.entries(memoryMap)) {
+                const row = document.createElement('tr');
+                row.className = 'memory-item';
+                row.dataset.address = address;
+                row.dataset.type = data.type;
+                
+                row.innerHTML = `
+                    <td class="memory-address">${address}</td>
+                    <td class="memory-value">${data.value}</td>
+                    <td>${data.type}</td>
+                    <td class="memory-hex">${data.hex}</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning edit-memory-btn">Edit</button>
+                    </td>
+                `;
+                
+                memoryTable.appendChild(row);
+            }
+        }
+        
+        // Function to update the memory regions table
+        function updateMemoryRegionsTable(regions) {
+            if (!memoryRegionsTable) return;
+            
+            memoryRegionsTable.innerHTML = '';
+            
+            if (!regions || regions.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="6" class="text-center">No memory regions available.</td>';
+                memoryRegionsTable.appendChild(row);
+                return;
+            }
+            
+            for (const region of regions) {
+                const row = document.createElement('tr');
+                row.className = 'memory-region';
+                row.dataset.address = region.base_address;
+                
+                // Format the protection string
+                let protectionHtml = '<span class="memory-protection">';
+                if (region.protection.includes('r')) {
+                    protectionHtml += '<span class="memory-protection-r">R</span>';
+                } else {
+                    protectionHtml += '<span class="memory-protection-none">-</span>';
+                }
+                
+                if (region.protection.includes('w')) {
+                    protectionHtml += '<span class="memory-protection-w">W</span>';
+                } else {
+                    protectionHtml += '<span class="memory-protection-none">-</span>';
+                }
+                
+                if (region.protection.includes('x')) {
+                    protectionHtml += '<span class="memory-protection-x">X</span>';
+                } else {
+                    protectionHtml += '<span class="memory-protection-none">-</span>';
+                }
+                protectionHtml += '</span>';
+                
+                row.innerHTML = `
+                    <td class="memory-address">${region.base_address}</td>
+                    <td>${region.size} bytes</td>
+                    <td>${protectionHtml}</td>
+                    <td>${region.type}</td>
+                    <td>${region.mapped_file || '—'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info view-region-btn" data-address="${region.base_address}">
+                            View
+                        </button>
+                    </td>
+                `;
+                
+                memoryRegionsTable.appendChild(row);
+            }
+        }
+        
+        // Function to update the hex editor
+        function updateHexEditor(baseAddress, hexBytes, size) {
+            if (!hexEditorContainer) return;
+            
+            if (!hexBytes || hexBytes.length === 0) {
+                hexEditorContainer.innerHTML = '<p class="text-center text-muted">No memory data available at this address.</p>';
+                return;
+            }
+            
+            const bytesPerRow = 16;
+            const rows = Math.ceil(hexBytes.length / bytesPerRow);
+            let html = '<div class="hex-editor">';
+            
+            // Calculate base address as integer
+            let baseAddressInt = parseInt(baseAddress.startsWith('0x') ? baseAddress.substring(2) : baseAddress, 16);
+            
+            for (let row = 0; row < rows; row++) {
+                // Address column
+                const rowAddress = baseAddressInt + (row * bytesPerRow);
+                html += `<div class="row mb-2">`;
+                html += `<div class="col-2 text-muted">${'0x' + rowAddress.toString(16).padStart(8, '0')}</div>`;
+                
+                // Hex columns
+                html += `<div class="col-7">`;
+                for (let col = 0; col < bytesPerRow; col++) {
+                    const byteIndex = (row * bytesPerRow) + col;
+                    if (byteIndex < hexBytes.length) {
+                        html += `<span class="me-1">${hexBytes[byteIndex].padStart(2, '0')}</span>`;
+                    } else {
+                        html += `<span class="me-1 text-muted">--</span>`;
+                    }
+                }
+                html += `</div>`;
+                
+                // ASCII representation
+                html += `<div class="col-3">`;
+                for (let col = 0; col < bytesPerRow; col++) {
+                    const byteIndex = (row * bytesPerRow) + col;
+                    if (byteIndex < hexBytes.length) {
+                        const byte = parseInt(hexBytes[byteIndex], 16);
+                        const char = (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
+                        html += `<span>${char}</span>`;
+                    }
+                }
+                html += `</div>`;
+                
+                html += `</div>`;
+            }
+            
+            html += '</div>';
+            hexEditorContainer.innerHTML = html;
+        }
+        
+        // Function to write a value to memory
+        function writeMemory(address, value, type) {
+            // Special endpoint for real processes
+            fetch(`/api/real-memory-write/${processId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    address: address,
+                    value: value,
+                    type: type
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh memory view
+                    if (viewAddressInput.value) {
+                        viewMemory(viewAddressInput.value, parseInt(viewSizeInput.value, 10));
+                    } else {
+                        refreshMemory();
+                    }
+                    
+                    showAlert(`Successfully wrote ${value} to address ${address}`, 'success');
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error writing to memory. Please try again.', 'danger');
+            });
+        }
+        
+        // Function to show alerts
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+            alertDiv.role = 'alert';
+            
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // Insert alert before the first element in the container
+            const container = document.querySelector('.container');
+            if (container) {
+                container.insertBefore(alertDiv, container.firstChild);
+                
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,8 +1,10 @@
 import os
 import logging
+import platform
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 from process_simulator import ProcessSimulator
 from memory_editor import MemoryEditor, MemoryDisplay
+from process_bridge import ProcessBridge, ProcessType
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -16,6 +18,9 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev_secret_key")
 process_simulator = ProcessSimulator()
 memory_editor = MemoryEditor(process_simulator)
 
+# Initialize the process bridge for real process support
+process_bridge = ProcessBridge(process_simulator)
+
 # Sample processes for demonstration
 process_simulator.create_process("Calculator", {"0x1000": 42, "0x1004": 3.14, "0x1008": "Hello"})
 process_simulator.create_process("Notepad", {"0x2000": 100, "0x2004": 200, "0x2008": "World"})
@@ -24,12 +29,20 @@ process_simulator.create_process("Game", {"0x3000": 1000, "0x3004": 2000, "0x300
 @app.route('/')
 def index():
     """Main page that lists available processes"""
-    processes = process_simulator.list_processes()
-    return render_template('index.html', processes=processes)
+    # Get both simulated and real processes
+    simulated_processes = process_simulator.list_processes()
+    
+    # Try to list real processes if supported on this platform
+    real_processes = process_bridge.list_real_processes()
+    
+    return render_template('index.html', 
+                          simulated_processes=simulated_processes,
+                          real_processes=real_processes,
+                          system=platform.system())
 
 @app.route('/process/<process_id>')
 def view_process(process_id):
-    """View a specific process's memory"""
+    """View a specific process's memory - simulated process"""
     process = process_simulator.get_process(process_id)
     if not process:
         flash(f"Process {process_id} not found", "danger")
@@ -57,6 +70,38 @@ def view_process(process_id):
                           registers=registers,
                           symbols=symbols,
                           breakpoints=breakpoints,
+                          process_type=ProcessType.SIMULATED,
+                          display_formats=[
+                              MemoryDisplay.HEX,
+                              MemoryDisplay.DECIMAL,
+                              MemoryDisplay.ASCII,
+                              MemoryDisplay.BYTES,
+                              MemoryDisplay.MIXED
+                          ])
+
+@app.route('/real-process/<process_id>')
+def view_real_process(process_id):
+    """View a real process's memory"""
+    # Try to attach to the real process
+    if not process_bridge.attach_to_process(process_id, ProcessType.REAL):
+        flash(f"Could not attach to real process {process_id}", "danger")
+        return redirect(url_for('index'))
+    
+    # Get process info
+    process_info = process_bridge.get_process_info()
+    
+    # Get memory map
+    memory_map = process_bridge.get_memory_map()
+    
+    # Get memory regions
+    memory_regions = process_bridge.get_memory_regions()
+    
+    return render_template('real_process.html',
+                          process=process_info,
+                          memory_map=memory_map,
+                          memory_regions=memory_regions,
+                          process_type=ProcessType.REAL,
+                          system=platform.system(),
                           display_formats=[
                               MemoryDisplay.HEX,
                               MemoryDisplay.DECIMAL,

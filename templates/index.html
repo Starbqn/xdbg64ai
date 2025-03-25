@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memory Editor</title>
+    <title>x64dbg Lite</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         .memory-editor-header {
@@ -20,13 +21,27 @@
         .process-card:hover {
             transform: translateY(-5px);
         }
+        .process-type-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            border-radius: 0;
+            border-top-right-radius: 0.375rem;
+        }
+        .system-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.8rem;
+        }
     </style>
 </head>
 <body>
     <header class="memory-editor-header">
         <div class="container">
-            <h1 class="display-4">Memory Editor</h1>
-            <p class="lead">Attach to simulated processes and edit memory values</p>
+            <h1 class="display-4">x64dbg Lite</h1>
+            <p class="lead">Debug, analyze and modify memory in real and simulated processes</p>
+            <span class="badge bg-info system-badge">{{ system }}</span>
         </div>
     </header>
 
@@ -47,64 +62,167 @@
             {% endif %}
         {% endwith %}
 
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Available Processes</h5>
-                    </div>
-                    <div class="card-body">
-                        {% if processes %}
-                            <div class="row">
-                                {% for process in processes %}
-                                <div class="col-md-6">
-                                    <div class="card process-card">
-                                        <div class="card-body">
-                                            <h5 class="card-title">{{ process.name }}</h5>
-                                            <h6 class="card-subtitle mb-2 text-muted">PID: {{ process.pid }}</h6>
-                                            <p class="card-text">Memory regions: {{ process.memory|length }}</p>
-                                            <a href="{{ url_for('view_process', process_id=process.pid) }}" class="btn btn-primary">Examine Memory</a>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endfor %}
+        <!-- Tabs for process types -->
+        <ul class="nav nav-tabs mb-4" id="processTypesTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="simulated-tab" data-bs-toggle="tab" data-bs-target="#simulated-pane" type="button" role="tab" aria-controls="simulated-pane" aria-selected="true">
+                    <i class="bi bi-cpu"></i> Simulated Processes
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="real-tab" data-bs-toggle="tab" data-bs-target="#real-pane" type="button" role="tab" aria-controls="real-pane" aria-selected="false">
+                    <i class="bi bi-pc-display"></i> Real Processes
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="processTypesContent">
+            <!-- Simulated Processes Tab -->
+            <div class="tab-pane fade show active" id="simulated-pane" role="tabpanel" aria-labelledby="simulated-tab">
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Simulated Processes</h5>
+                                <button class="btn btn-sm btn-primary" id="refresh-simulated">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
                             </div>
-                        {% else %}
-                            <p class="text-muted">No processes available.</p>
-                        {% endif %}
+                            <div class="card-body">
+                                {% if simulated_processes %}
+                                    <div class="row">
+                                        {% for process in simulated_processes %}
+                                        <div class="col-md-4">
+                                            <div class="card process-card">
+                                                <div class="card-body">
+                                                    <span class="badge bg-success process-type-badge">Simulated</span>
+                                                    <h5 class="card-title">{{ process.name }}</h5>
+                                                    <h6 class="card-subtitle mb-2 text-muted">PID: {{ process.pid }}</h6>
+                                                    <p class="card-text small">Memory regions: {{ process.memory|length }}</p>
+                                                    <a href="{{ url_for('view_process', process_id=process.pid) }}" class="btn btn-primary btn-sm">Debug</a>
+                                                    <button class="btn btn-danger btn-sm delete-process-btn" data-pid="{{ process.pid }}">Delete</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <p class="text-muted">No simulated processes available.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Create New Process</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="create-process-form">
+                                    <div class="mb-3">
+                                        <label for="processName" class="form-label">Process Name</label>
+                                        <input type="text" class="form-control" id="processName" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="bi bi-plus-circle"></i> Create Process
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Create New Process</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="create-process-form">
-                            <div class="mb-3">
-                                <label for="processName" class="form-label">Process Name</label>
-                                <input type="text" class="form-control" id="processName" required>
+
+            <!-- Real Processes Tab -->
+            <div class="tab-pane fade" id="real-pane" role="tabpanel" aria-labelledby="real-tab">
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            <strong>Caution:</strong> Debugging real processes can affect system stability. Always exercise caution, especially when writing to memory.
+                            {% if system == 'Windows' %}
+                                Administrative privileges may be required on Windows.
+                            {% elif system == 'Linux' %}
+                                Root privileges may be required on Linux.
+                            {% elif system == 'Darwin' %}
+                                System Integrity Protection will restrict many operations on macOS.
+                            {% endif %}
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Real System Processes</h5>
+                                <button class="btn btn-sm btn-primary" id="refresh-real-processes">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
                             </div>
-                            <button type="submit" class="btn btn-success">Create Process</button>
-                        </form>
+                            <div class="card-body">
+                                {% if real_processes %}
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>PID</th>
+                                                    <th>Name</th>
+                                                    <th>Path</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="real-processes-table">
+                                                {% for proc in real_processes %}
+                                                <tr>
+                                                    <td>{{ proc.pid }}</td>
+                                                    <td>{{ proc.name }}</td>
+                                                    <td class="small text-truncate" style="max-width: 300px;">{{ proc.path }}</td>
+                                                    <td>
+                                                        <a href="{{ url_for('view_real_process', process_id=proc.pid) }}" class="btn btn-sm btn-danger">Debug</a>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <p class="text-muted">No real processes available or permission denied.</p>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="card mt-4">
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">About Memory Editor</h5>
+                        <h5 class="card-title mb-0">About x64dbg Lite</h5>
                     </div>
                     <div class="card-body">
-                        <p>This is a barebones memory editor that allows you to attach to simulated processes, read and write memory values, and display them in a simple interface.</p>
-                        <p>Features:</p>
-                        <ul>
-                            <li>Process attachment capability</li>
-                            <li>Memory reading and writing</li>
-                            <li>Support for different data types (int, float, string)</li>
-                            <li>Simulated process creation</li>
-                        </ul>
+                        <p>x64dbg Lite is a simplified version of the popular x64dbg debugger, allowing you to:</p>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-cpu"></i> Simulated Process Debugging:</h6>
+                                <ul>
+                                    <li>View and edit memory in various formats</li>
+                                    <li>Inspect CPU registers and modify values</li>
+                                    <li>Step through assembly instructions</li>
+                                    <li>Set and manage breakpoints</li>
+                                    <li>Lookup symbols and functions</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-pc-display"></i> Real Process Debugging:</h6>
+                                <ul>
+                                    <li>Attach to real running processes</li>
+                                    <li>View memory regions and protection</li>
+                                    <li>Examine and modify memory contents</li>
+                                    <li>Hex editor for raw memory viewing</li>
+                                    <li>Platform-specific process access</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
