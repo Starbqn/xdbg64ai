@@ -120,11 +120,14 @@ class ProcessBridge:
                 
                 # Detach from any current process
                 if self.current_type and self.current_id:
-                    if self.current_type == ProcessType.REAL and self.has_real_connector:
+                    if self.current_type == ProcessType.REAL and self.has_real_connector and self.real_connector is not None:
                         self.real_connector.detach_from_process()
                 
                 # Attach to the real process
-                success = self.real_connector.attach_to_process(real_pid)
+                if self.real_connector is not None:
+                    success = self.real_connector.attach_to_process(real_pid)
+                else:
+                    success = False
                 if success:
                     self.current_type = ProcessType.REAL
                     self.current_id = process_id
@@ -147,7 +150,7 @@ class ProcessBridge:
             return True
         
         if self.current_type == ProcessType.REAL:
-            if self.has_real_connector:
+            if self.has_real_connector and self.real_connector is not None:
                 success = self.real_connector.detach_from_process()
                 if success:
                     self.current_type = None
@@ -198,7 +201,7 @@ class ProcessBridge:
                 return str(value).encode('utf-8')
         
         elif self.current_type == ProcessType.REAL:
-            if not self.has_real_connector:
+            if not self.has_real_connector or self.real_connector is None:
                 logger.error("Real process connector not available")
                 return None
             

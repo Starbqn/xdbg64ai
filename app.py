@@ -619,6 +619,19 @@ def write_real_memory(process_id):
             pass
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/processes/real', methods=['GET'])
+def list_real_processes_api():
+    """API endpoint to list all real processes on the system"""
+    try:
+        processes = process_bridge.list_real_processes()
+        return jsonify({
+            "success": True,
+            "processes": processes
+        })
+    except Exception as e:
+        logger.error(f"Error listing real processes: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.errorhandler(500)
 def server_error(e):
     logger.error(f"Server error: {e}")
