@@ -1,6 +1,7 @@
 """
 Process Bridge for Memory Debugger.
 Bridges between the simulated process system and real processes.
+Also supports Android process integration.
 """
 
 import os
@@ -17,6 +18,13 @@ from real_process_connector import (
 )
 from process_simulator import ProcessSimulator, SimulatedProcess, Instruction, Symbol, Breakpoint
 
+# Try to import Android connector if available
+try:
+    from android_process_connector import AndroidProcessConnector, is_running_on_android
+    HAS_ANDROID_SUPPORT = True
+except ImportError:
+    HAS_ANDROID_SUPPORT = False
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -25,6 +33,7 @@ class ProcessType:
     """Enum for process types"""
     SIMULATED = "simulated"
     REAL = "real"
+    ANDROID = "android"
 
 class ProcessBridge:
     """Bridge between simulated and real processes"""
