@@ -18,6 +18,7 @@ class AndroidProcessConnector:
         self.connected = False
         self.current_pid = None
         self.device_id = None
+        self.using_shizuku = False  # Flag to indicate whether to use Shizuku API
     
     def is_android_connected(self) -> bool:
         """Check if an Android device is connected via ADB"""
@@ -236,6 +237,45 @@ class AndroidProcessConnector:
             return result.stdout.strip()
         except subprocess.SubprocessError:
             return "Unknown"
+            
+    def use_shizuku(self) -> bool:
+        """Configure to use Shizuku instead of direct root"""
+        self.using_shizuku = True
+        return True
+        
+    def is_shizuku_available(self) -> bool:
+        """Check if Shizuku is available on the device"""
+        if not self.is_android_connected():
+            return False
+            
+        # Use adb to check if Shizuku is installed
+        result = subprocess.run(
+            ["adb", "shell", "pm", "list", "packages", "moe.shizuku.privileged.api"],
+            capture_output=True,
+            text=True
+        )
+        
+        return "moe.shizuku.privileged.api" in result.stdout
+        
+    def read_memory_shizuku(self, pid: str, address: str, size: int = 8) -> Optional[bytes]:
+        """Read memory using Shizuku API rather than root"""
+        if not self.using_shizuku or not self.is_shizuku_available():
+            return None
+            
+        # In the actual implementation, this would call the Shizuku API
+        # through the Android app's native code. This is just a placeholder.
+        print(f"Reading memory via Shizuku: pid={pid}, address={address}, size={size}")
+        return b'\x00' * size
+        
+    def write_memory_shizuku(self, pid: str, address: str, value: bytes) -> bool:
+        """Write memory using Shizuku API rather than root"""
+        if not self.using_shizuku or not self.is_shizuku_available():
+            return False
+            
+        # In the actual implementation, this would call the Shizuku API
+        # through the Android app's native code. This is just a placeholder.
+        print(f"Writing memory via Shizuku: pid={pid}, address={address}, value={value.hex()}")
+        return True
 
 # Helper function to check if running on Android
 def is_running_on_android() -> bool:

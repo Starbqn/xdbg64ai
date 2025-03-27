@@ -255,7 +255,9 @@ class ProcessBridge:
                     logger.error(f"Unsupported data type: {data_type}")
                     return False
                 
-                return self.real_connector.write_memory(addr_int, data)
+                if self.real_connector:
+                    return self.real_connector.write_memory(addr_int, data)
+                return False
             
             except Exception as e:
                 logger.error(f"Error writing memory: {e}")
@@ -284,7 +286,7 @@ class ProcessBridge:
             
             # For real processes, we need to get memory regions and read some sample values
             try:
-                memory_regions = self.real_connector.get_memory_regions()
+                memory_regions = self.real_connector.get_memory_regions() if self.real_connector else []
                 memory_map = {}
                 
                 # Sample a few regions
@@ -296,7 +298,7 @@ class ProcessBridge:
                     
                     # Try to read some memory
                     try:
-                        data = self.real_connector.read_memory(addr, 8)
+                        data = self.real_connector.read_memory(addr, 8) if self.real_connector else None
                         if data:
                             # Try to interpret the data
                             import struct
@@ -361,7 +363,7 @@ class ProcessBridge:
                 return []
             
             try:
-                regions = self.real_connector.get_memory_regions()
+                regions = self.real_connector.get_memory_regions() if self.real_connector else []
                 return [
                     {
                         "base_address": f"0x{r.base_address:x}",
