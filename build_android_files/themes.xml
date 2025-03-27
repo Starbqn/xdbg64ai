@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme -->
+    <style name="Theme.MemoryDebugger" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Secondary brand color -->
+        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorSecondaryVariant">@color/teal_700</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Status bar color -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <!-- Text appearance -->
+        <item name="textAppearanceHeadline6">@style/TextAppearance.MemoryDebugger.Headline6</item>
+        <item name="textAppearanceSubtitle1">@style/TextAppearance.MemoryDebugger.Subtitle1</item>
+        <item name="textAppearanceCaption">@style/TextAppearance.MemoryDebugger.Caption</item>
+    </style>
+    
+    <!-- Custom text styles -->
+    <style name="TextAppearance.MemoryDebugger.Headline6" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    
+    <style name="TextAppearance.MemoryDebugger.Subtitle1" parent="TextAppearance.MaterialComponents.Subtitle1">
+        <item name="android:textSize">16sp</item>
+    </style>
+    
+    <style name="TextAppearance.MemoryDebugger.Caption" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/material_on_surface_emphasis_medium</item>
+    </style>
+</resources>
