@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Memory Debugger</string>
+    <string name="action_settings">Settings</string>
+    
+    <!-- Main Activity -->
+    <string name="access_method">Access Method</string>
+    <string name="shizuku">Shizuku</string>
+    <string name="root_access">Root Access</string>
+    <string name="status_checking">Status: Checking access method…</string>
+    <string name="check_permissions">Check/Request Permissions</string>
+    <string name="processes">Processes</string>
+    <string name="refresh_process_list">Refresh Process List</string>
+    <string name="memory_operations">Memory Operations</string>
+    <string name="selected_process_none">Selected process: None</string>
+    <string name="memory_address_hint">Memory Address (hex)</string>
+    <string name="size_bytes">Size (bytes)</string>
+    <string name="read">Read</string>
+    <string name="write">Write</string>
+    <string name="memory_value_hint">Memory Value (hex)</string>
+    <string name="view_memory_map">View Memory Map</string>
+    <string name="web_interface">Web Interface</string>
+    <string name="web_interface_desc">Access advanced features through the built-in web interface:</string>
+    <string name="open_web_interface">Open Web Interface</string>
+    
+    <!-- Process List Item -->
+    <string name="process_name_placeholder">Process Name</string>
+    <string name="pid_placeholder">PID: 1234</string>
+    
+    <!-- WebView Activity -->
+    <string name="web_interface_title">Web Interface</string>
+    
+    <!-- Memory Map Dialog -->
+    <string name="memory_regions">Memory Regions</string>
+    <string name="close">Close</string>
+    <string name="copy_address">Copy Address</string>
+    
+    <!-- Toasts and Messages -->
+    <string name="no_processes_found">No processes found or permission denied</string>
+    <string name="failed_read_memory">Failed to read memory</string>
+    <string name="failed_write_memory">Failed to write memory</string>
+    <string name="memory_written_success">Memory written successfully</string>
+    <string name="enter_address_size">Please enter address and size</string>
+    <string name="enter_address_value">Please enter address and value</string>
+    <string name="no_memory_regions">No memory regions found or not supported</string>
+    <string name="shizuku_permission_granted">Shizuku permission already granted</string>
+    <string name="requesting_shizuku_permission">Requesting Shizuku permission…</string>
+    <string name="root_available">Root access is available</string>
+    <string name="root_not_available">Root access is not available. This device may not be rooted.</string>
+</resources>

@@ -13,9 +13,11 @@ from typing import Dict, List, Optional, Any, Tuple
 # It also serves as a design reference for the Android implementation.
 
 class AndroidProcessConnector:
-    """Android-specific implementation to interface with Android app"""
     def __init__(self):
-        self.connected = False
+        """Android-specific implementation to interface with Android app"""
+        self.adb_path = shutil.which('adb')
+        self.attached_pid = None
+        self.using_shizuku = False  # New flag for Shizuku support.connected = False
         self.current_pid = None
         self.device_id = None
         self.using_shizuku = False  # Flag to indicate whether to use Shizuku API
@@ -278,6 +280,27 @@ class AndroidProcessConnector:
         return True
 
 # Helper function to check if running on Android
+
+    def use_shizuku(self) -> bool:
+        """Configure to use Shizuku instead of direct root"""
+        self.using_shizuku = True
+        return True
+        
+    def is_shizuku_available(self) -> bool:
+        """Check if Shizuku is available on the device"""
+        if not self.is_android_connected():
+            return False
+            
+        # Use adb to check if Shizuku is installed
+        result = subprocess.run(
+            ["adb", "shell", "pm", "list", "packages", "moe.shizuku.privileged.api"],
+            capture_output=True,
+            text=True
+        )
+        
+        return "moe.shizuku.privileged.api" in result.stdout
+
+
 def is_running_on_android() -> bool:
     """Check if the current platform is Android"""
     return "android" in platform.platform().lower()

@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Editor - {{ process.name }}</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        .memory-editor-header {
+            padding: 1.5rem 0;
+            margin-bottom: 1.5rem;
+            background-color: var(--bs-dark);
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        .memory-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .memory-item:hover {
+            background-color: rgba(var(--bs-secondary-rgb), 0.1);
+        }
+        .memory-address {
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .memory-value {
+            font-family: monospace;
+        }
+        .memory-hex {
+            font-family: monospace;
+            color: var(--bs-info);
+        }
+        .btn-back {
+            margin-bottom: 1rem;
+        }
+        .instruction {
+            font-family: monospace;
+            padding: 0.25rem 0.5rem;
+        }
+        .instruction.current {
+            background-color: rgba(var(--bs-warning-rgb), 0.2);
+            font-weight: bold;
+        }
+        .instruction:hover {
+            background-color: rgba(var(--bs-secondary-rgb), 0.1);
+        }
+        .register-value {
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .breakpoint-enabled {
+            color: var(--bs-danger);
+        }
+        .breakpoint-disabled {
+            color: var(--bs-secondary);
+        }
+        .symbol-name {
+            font-family: monospace;
+            font-weight: bold;
+            color: var(--bs-info);
+        }
+        .tab-pane {
+            padding-top: 1rem;
+        }
+        .code-view {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <header class="memory-editor-header">
+        <div class="container">
+            <h1 class="display-5">x64dbg Lite - {{ process.name }}</h1>
+            <p class="lead">PID: {{ process.pid }}</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-back">
+                <i class="bi bi-arrow-left"></i> Back to Processes
+            </a>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#aiAssistantModal">
+                <i class="bi bi-robot"></i> AI Assistant
+            </button>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}" role="alert">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Debugger Controls -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Debugger Controls</h5>
+                        <div>
+                            <button class="btn btn-sm btn-primary" id="step-instruction-btn">
+                                <i class="bi bi-arrow-right"></i> Step
+                            </button>
+                            <button class="btn btn-sm btn-success" id="run-until-bp-btn">
+                                <i class="bi bi-play-fill"></i> Run
+                            </button>
+                            <button class="btn btn-sm btn-danger" id="pause-execution-btn">
+                                <i class="bi bi-pause-fill"></i> Pause
+                            </button>
+                            <button class="btn btn-sm btn-secondary" id="refresh-state-btn">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Display Format Selector -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Display Format</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group" role="group" aria-label="Display format selection">
+                            {% for format in display_formats %}
+                                <input type="radio" class="btn-check" name="displayFormat" id="format-{{ format }}" value="{{ format }}" {% if loop.first %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary" for="format-{{ format }}">{{ format|capitalize }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Tabs -->
+        <ul class="nav nav-tabs" id="debuggerTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="memory-tab" data-bs-toggle="tab" data-bs-target="#memory-pane" type="button" role="tab" aria-controls="memory-pane" aria-selected="true">Memory</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="cpu-tab" data-bs-toggle="tab" data-bs-target="#cpu-pane" type="button" role="tab" aria-controls="cpu-pane" aria-selected="false">CPU</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="breakpoints-tab" data-bs-toggle="tab" data-bs-target="#breakpoints-pane" type="button" role="tab" aria-controls="breakpoints-pane" aria-selected="false">Breakpoints</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="symbols-tab" data-bs-toggle="tab" data-bs-target="#symbols-pane" type="button" role="tab" aria-controls="symbols-pane" aria-selected="false">Symbols</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="debuggerTabContent">
+            <!-- Memory Tab -->
+            <div class="tab-pane fade show active" id="memory-pane" role="tabpanel" aria-labelledby="memory-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Memory Map</h5>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-secondary" id="undo-memory-btn">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Undo
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" id="redo-memory-btn">
+                                        <i class="bi bi-arrow-clockwise"></i> Redo
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" id="refresh-memory">Refresh</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Address</th>
+                                                <th>Value</th>
+                                                <th>Type</th>
+                                                <th>Hex</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="memory-table">
+                                            {% if memory_map %}
+                                                {% for address, data in memory_map.items() %}
+                                                <tr class="memory-item" data-address="{{ address }}" data-type="{{ data.type }}">
+                                                    <td class="memory-address">{{ address }}</td>
+                                                    <td class="memory-value">{{ data.value }}</td>
+                                                    <td>{{ data.type }}</td>
+                                                    <td class="memory-hex">{{ data.hex }}</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-warning edit-memory-btn">Edit</button>
+                                                        <button class="btn btn-sm btn-danger toggle-bp-btn" data-address="{{ address }}">
+                                                            <i class="bi bi-circle-fill"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="5" class="text-center">No memory data available.</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Edit Memory</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="edit-memory-form">
+                                    <div class="mb-3">
+                                        <label for="memoryAddress" class="form-label">Address</label>
+                                        <input type="text" class="form-control" id="memoryAddress" readonly>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="memoryType" class="form-label">Type</label>
+                                        <select class="form-select" id="memoryType">
+                                            <option value="int">Integer</option>
+                                            <option value="float">Float</option>
+                                            <option value="string">String</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="memoryValue" class="form-label">Value</label>
+                                        <input type="text" class="form-control" id="memoryValue" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary" id="save-memory-btn">Save Changes</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Memory Scanner</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="scan-memory-form">
+                                    <div class="mb-3">
+                                        <label for="scanType" class="form-label">Type</label>
+                                        <select class="form-select" id="scanType">
+                                            <option value="int">Integer</option>
+                                            <option value="float">Float</option>
+                                            <option value="string">String</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="scanValue" class="form-label">Value to Scan For</label>
+                                        <input type="text" class="form-control" id="scanValue" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-info">Scan Memory</button>
+                                </form>
+                                <div class="mt-3" id="scan-results">
+                                    <!-- Scan results will be displayed here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPU Tab -->
+            <div class="tab-pane fade" id="cpu-pane" role="tabpanel" aria-labelledby="cpu-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Disassembly</h5>
+                            </div>
+                            <div class="card-body code-view">
+                                <div id="instructions-container">
+                                    {% if instructions %}
+                                        {% for instr in instructions %}
+                                        <div class="instruction d-flex {% if loop.first %}current{% endif %}" data-address="{{ instr.address }}">
+                                            <div class="me-2 breakpoint-indicator" data-address="{{ instr.address }}">
+                                                <i class="bi bi-circle"></i>
+                                            </div>
+                                            <div class="me-3 text-muted">{{ instr.address }}</div>
+                                            <div class="me-3 text-primary">{{ instr.opcode }}</div>
+                                            <div class="text-info">{{ instr.operands|join(', ') }}</div>
+                                            <div class="ms-auto text-muted">{{ instr.bytes }}</div>
+                                        </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center">No instructions available.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Registers</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row" id="registers-container">
+                                    {% if registers %}
+                                        {% for reg_name, reg_value in registers.items() %}
+                                        <div class="col-md-6 mb-2">
+                                            <div class="d-flex justify-content-between align-items-center register-item" data-register="{{ reg_name }}">
+                                                <span class="fw-bold">{{ reg_name }}</span>
+                                                <span class="register-value">{{ reg_value }}</span>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center">No register data available.</div>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Register Edit Form -->
+                                <form id="edit-register-form" class="mt-4">
+                                    <div class="mb-3">
+                                        <label for="registerName" class="form-label">Register</label>
+                                        <select class="form-select" id="registerName">
+                                            {% if registers %}
+                                                {% for reg_name in registers.keys() %}
+                                                <option value="{{ reg_name }}">{{ reg_name }}</option>
+                                                {% endfor %}
+                                            {% endif %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="registerValue" class="form-label">Value</label>
+                                        <input type="text" class="form-control" id="registerValue" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Set Register</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Breakpoints Tab -->
+            <div class="tab-pane fade" id="breakpoints-pane" role="tabpanel" aria-labelledby="breakpoints-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Breakpoints</h5>
+                                <button class="btn btn-sm btn-danger" id="clear-all-bp-btn">Clear All</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Address</th>
+                                                <th>Type</th>
+                                                <th>Enabled</th>
+                                                <th>Condition</th>
+                                                <th>Hit Count</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="breakpoints-table">
+                                            {% if breakpoints %}
+                                                {% for bp in breakpoints %}
+                                                <tr class="breakpoint-item" data-address="{{ bp.address }}">
+                                                    <td class="memory-address">{{ bp.address }}</td>
+                                                    <td>{{ bp.type }}</td>
+                                                    <td>
+                                                        <i class="bi {% if bp.enabled %}bi-check-circle-fill text-success{% else %}bi-x-circle-fill text-danger{% endif %}"></i>
+                                                    </td>
+                                                    <td>{{ bp.condition or 'None' }}</td>
+                                                    <td>{{ bp.hit_count }}</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-warning toggle-bp-btn" data-address="{{ bp.address }}">
+                                                            {% if bp.enabled %}Disable{% else %}Enable{% endif %}
+                                                        </button>
+                                                        <button class="btn btn-sm btn-danger remove-bp-btn" data-address="{{ bp.address }}">
+                                                            Remove
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="6" class="text-center">No breakpoints set.</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Add Breakpoint</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="add-breakpoint-form">
+                                    <div class="mb-3">
+                                        <label for="bpAddress" class="form-label">Address</label>
+                                        <input type="text" class="form-control" id="bpAddress" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="bpType" class="form-label">Type</label>
+                                        <select class="form-select" id="bpType">
+                                            <option value="execution">Execution</option>
+                                            <option value="read">Memory Read</option>
+                                            <option value="write">Memory Write</option>
+                                            <option value="access">Memory Access</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="bpCondition" class="form-label">Condition (optional)</label>
+                                        <input type="text" class="form-control" id="bpCondition" placeholder="e.g. eax > 10">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Add Breakpoint</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Symbols Tab -->
+            <div class="tab-pane fade" id="symbols-pane" role="tabpanel" aria-labelledby="symbols-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Symbols</h5>
+                                <div class="input-group" style="max-width: 300px;">
+                                    <input type="text" class="form-control" id="symbolSearch" placeholder="Search symbols...">
+                                    <button class="btn btn-outline-secondary" type="button" id="symbolSearchBtn">
+                                        <i class="bi bi-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Address</th>
+                                                <th>Type</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="symbols-table">
+                                            {% if symbols %}
+                                                {% for sym in symbols %}
+                                                <tr class="symbol-item" data-address="{{ sym.address }}" data-name="{{ sym.name }}">
+                                                    <td class="symbol-name">{{ sym.name }}</td>
+                                                    <td class="memory-address">{{ sym.address }}</td>
+                                                    <td>{{ sym.type }}</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-info jump-to-symbol-btn" data-address="{{ sym.address }}">
+                                                            Jump To
+                                                        </button>
+                                                        <button class="btn btn-sm btn-warning add-bp-at-symbol-btn" data-address="{{ sym.address }}">
+                                                            Set BP
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="4" class="text-center">No symbols available.</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for confirming memory write -->
+    <div class="modal fade" id="confirmWriteModal" tabindex="-1" aria-labelledby="confirmWriteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmWriteModalLabel">Confirm Memory Write</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to write this value to memory?</p>
+                    <p><strong>Address:</strong> <span id="confirm-address"></span></p>
+                    <p><strong>New Value:</strong> <span id="confirm-value"></span></p>
+                    <p><strong>Type:</strong> <span id="confirm-type"></span></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="confirm-write-btn">Write Memory</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Store the process ID for use in API calls
+        const processId = "{{ process.pid }}";
+        
+        // Cache DOM elements
+        const memoryTable = document.getElementById('memory-table');
+        const editMemoryForm = document.getElementById('edit-memory-form');
+        const memoryAddressInput = document.getElementById('memoryAddress');
+        const memoryTypeSelect = document.getElementById('memoryType');
+        const memoryValueInput = document.getElementById('memoryValue');
+        const refreshMemoryBtn = document.getElementById('refresh-memory');
+        const scanMemoryForm = document.getElementById('scan-memory-form');
+        const scanResultsDiv = document.getElementById('scan-results');
+        
+        // Modal elements
+        const confirmWriteModal = new bootstrap.Modal(document.getElementById('confirmWriteModal'));
+        const confirmAddressSpan = document.getElementById('confirm-address');
+        const confirmValueSpan = document.getElementById('confirm-value');
+        const confirmTypeSpan = document.getElementById('confirm-type');
+        const confirmWriteBtn = document.getElementById('confirm-write-btn');
+        
+        // Add event listener to the table for edit buttons
+        memoryTable.addEventListener('click', function(e) {
+            if (e.target.classList.contains('edit-memory-btn')) {
+                const row = e.target.closest('tr');
+                const address = row.dataset.address;
+                const type = row.dataset.type;
+                const value = row.querySelector('.memory-value').textContent;
+                
+                // Fill the edit form
+                memoryAddressInput.value = address;
+                memoryTypeSelect.value = type;
+                memoryValueInput.value = value;
+                
+                // Scroll to the edit form
+                editMemoryForm.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+        
+        // Handle edit memory form submission
+        editMemoryForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const address = memoryAddressInput.value;
+            const type = memoryTypeSelect.value;
+            const value = memoryValueInput.value;
+            
+            // Show confirmation modal
+            confirmAddressSpan.textContent = address;
+            confirmValueSpan.textContent = value;
+            confirmTypeSpan.textContent = type;
+            confirmWriteModal.show();
+        });
+        
+        // Handle confirm write button click
+        confirmWriteBtn.addEventListener('click', function() {
+            const address = memoryAddressInput.value;
+            const type = memoryTypeSelect.value;
+            const value = memoryValueInput.value;
+            
+            // Write to memory
+            writeMemory(address, value, type);
+            
+            // Hide modal
+            confirmWriteModal.hide();
+        });
+        
+        // Handle memory refresh button click
+        refreshMemoryBtn.addEventListener('click', function() {
+            refreshMemory();
+        });
+        
+        // Handle scan memory form submission
+        scanMemoryForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const type = document.getElementById('scanType').value;
+            const value = document.getElementById('scanValue').value;
+            
+            scanMemory(value, type);
+        });
+        
+        // Function to refresh memory display
+        function refreshMemory() {
+            fetch(`/api/memory/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateMemoryTable(data.memory);
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error refreshing memory data. Please try again.');
+                });
+        }
+        
+        // Function to update the memory table with new data
+        function updateMemoryTable(memoryMap) {
+            memoryTable.innerHTML = '';
+            
+            if (Object.keys(memoryMap).length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="5" class="text-center">No memory data available.</td>';
+                memoryTable.appendChild(row);
+                return;
+            }
+            
+            for (const [address, data] of Object.entries(memoryMap)) {
+                const row = document.createElement('tr');
+                row.className = 'memory-item';
+                row.dataset.address = address;
+                row.dataset.type = data.type;
+                
+                row.innerHTML = `
+                    <td class="memory-address">${address}</td>
+                    <td class="memory-value">${data.value}</td>
+                    <td>${data.type}</td>
+                    <td class="memory-hex">${data.hex}</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning edit-memory-btn">Edit</button>
+                    </td>
+                `;
+                
+                memoryTable.appendChild(row);
+            }
+        }
+        
+        // Function to write a value to memory
+        function writeMemory(address, value, type) {
+            fetch(`/api/memory/${processId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    address: address,
+                    value: value,
+                    type: type
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh the memory display
+                    refreshMemory();
+                    
+                    // Show success message
+                    const successAlert = document.createElement('div');
+                    successAlert.className = 'alert alert-success mt-3';
+                    successAlert.textContent = `Successfully wrote ${value} to address ${address}`;
+                    editMemoryForm.parentNode.insertBefore(successAlert, editMemoryForm);
+                    
+                    // Remove the alert after 3 seconds
+                    setTimeout(() => {
+                        successAlert.remove();
+                    }, 3000);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error writing to memory. Please try again.');
+            });
+        }
+        
+        // Function to scan memory for a value
+        function scanMemory(value, type) {
+            // This would be an actual API call in a real application
+            // For our simulation, we'll just filter the current memory map
+            
+            fetch(`/api/memory/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const memoryMap = data.memory;
+                        const matches = [];
+                        
+                        // Convert value to the appropriate type for comparison
+                        let searchValue;
+                        if (type === 'int') {
+                            searchValue = parseInt(value);
+                        } else if (type === 'float') {
+                            searchValue = parseFloat(value);
+                        } else {
+                            searchValue = value;
+                        }
+                        
+                        // Find matches
+                        for (const [address, data] of Object.entries(memoryMap)) {
+                            if (data.type === type && data.value == searchValue) {
+                                matches.push({
+                                    address: address,
+                                    value: data.value,
+                                    type: data.type
+                                });
+                            }
+                        }
+                        
+                        // Display results
+                        displayScanResults(matches);
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error scanning memory. Please try again.');
+                });
+        }
+        
+        // Function to display scan results
+        function displayScanResults(matches) {
+            scanResultsDiv.innerHTML = '';
+            
+            if (matches.length === 0) {
+                scanResultsDiv.innerHTML = '<div class="alert alert-info">No matches found.</div>';
+                return;
+            }
+            
+            const resultsList = document.createElement('div');
+            resultsList.className = 'list-group';
+            
+            matches.forEach(match => {
+                const item = document.createElement('button');
+                item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <div>
+                        <span class="fw-bold">${match.address}</span>
+                        <small class="d-block text-muted">Type: ${match.type}</small>
+                    </div>
+                    <span class="badge bg-primary rounded-pill">${match.value}</span>
+                `;
+                
+                // Add click handler to populate the edit form
+                item.addEventListener('click', function() {
+                    memoryAddressInput.value = match.address;
+                    memoryTypeSelect.value = match.type;
+                    memoryValueInput.value = match.value;
+                    
+                    // Scroll to the edit form
+                    editMemoryForm.scrollIntoView({ behavior: 'smooth' });
+                });
+                
+                resultsList.appendChild(item);
+            });
+            
+            scanResultsDiv.appendChild(resultsList);
+        }
+
+        // =======================================
+        // CPU & Debugging Functionality
+        // =======================================
+        
+        // DOM Elements for Debugging Tab
+        const stepInstructionBtn = document.getElementById('step-instruction-btn');
+        const runUntilBpBtn = document.getElementById('run-until-bp-btn');
+        const pauseExecutionBtn = document.getElementById('pause-execution-btn');
+        const refreshStateBtn = document.getElementById('refresh-state-btn');
+        const undoMemoryBtn = document.getElementById('undo-memory-btn');
+        const redoMemoryBtn = document.getElementById('redo-memory-btn');
+        const instructionsContainer = document.getElementById('instructions-container');
+        const registersContainer = document.getElementById('registers-container');
+        const editRegisterForm = document.getElementById('edit-register-form');
+        const registerNameSelect = document.getElementById('registerName');
+        const registerValueInput = document.getElementById('registerValue');
+        const breakpointsTable = document.getElementById('breakpoints-table');
+        const addBreakpointForm = document.getElementById('add-breakpoint-form');
+        const bpAddressInput = document.getElementById('bpAddress');
+        const bpTypeSelect = document.getElementById('bpType');
+        const bpConditionInput = document.getElementById('bpCondition');
+        const clearAllBpBtn = document.getElementById('clear-all-bp-btn');
+        const symbolsTable = document.getElementById('symbols-table');
+        const symbolSearch = document.getElementById('symbolSearch');
+        const symbolSearchBtn = document.getElementById('symbolSearchBtn');
+        const displayFormatRadios = document.querySelectorAll('input[name="displayFormat"]');
+
+        // Add event listeners
+        stepInstructionBtn.addEventListener('click', stepInstruction);
+        runUntilBpBtn.addEventListener('click', runUntilBreakpoint);
+        refreshStateBtn.addEventListener('click', refreshDebugState);
+        undoMemoryBtn.addEventListener('click', undoMemoryEdit);
+        redoMemoryBtn.addEventListener('click', redoMemoryEdit);
+        
+        // Register the display format change handler
+        displayFormatRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                setDisplayFormat(this.value);
+            });
+        });
+
+        // Register edit form
+        if (editRegisterForm) {
+            editRegisterForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const register = registerNameSelect.value;
+                const value = registerValueInput.value;
+                setRegisterValue(register, value);
+            });
+        }
+
+        // Breakpoint form
+        if (addBreakpointForm) {
+            addBreakpointForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const address = bpAddressInput.value;
+                const type = bpTypeSelect.value;
+                const condition = bpConditionInput.value || null;
+                setBreakpoint(address, type, condition);
+            });
+        }
+
+        // Clear all breakpoints
+        if (clearAllBpBtn) {
+            clearAllBpBtn.addEventListener('click', clearAllBreakpoints);
+        }
+
+        // Toggle breakpoints in memory view
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.toggle-bp-btn')) {
+                const btn = e.target.closest('.toggle-bp-btn');
+                const address = btn.dataset.address;
+                toggleBreakpoint(address);
+            } else if (e.target.closest('.remove-bp-btn')) {
+                const btn = e.target.closest('.remove-bp-btn');
+                const address = btn.dataset.address;
+                removeBreakpoint(address);
+            } else if (e.target.closest('.breakpoint-indicator')) {
+                const indicator = e.target.closest('.breakpoint-indicator');
+                const address = indicator.dataset.address;
+                toggleBreakpoint(address);
+            } else if (e.target.closest('.jump-to-symbol-btn')) {
+                const btn = e.target.closest('.jump-to-symbol-btn');
+                const address = btn.dataset.address;
+                jumpToAddress(address);
+            } else if (e.target.closest('.add-bp-at-symbol-btn')) {
+                const btn = e.target.closest('.add-bp-at-symbol-btn');
+                const address = btn.dataset.address;
+                setBreakpoint(address, 'execution');
+            }
+        });
+
+        // Symbol search
+        if (symbolSearchBtn) {
+            symbolSearchBtn.addEventListener('click', function() {
+                searchSymbols(symbolSearch.value);
+            });
+        }
+
+        if (symbolSearch) {
+            symbolSearch.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchSymbols(symbolSearch.value);
+                }
+            });
+        }
+
+        // Function to step a single instruction
+        function stepInstruction() {
+            fetch(`/api/execution/step/${processId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateInstructions(data.instructions);
+                    updateRegisters(data.registers);
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error stepping instruction. Please try again.', 'danger');
+            });
+        }
+
+        // Function to run until breakpoint
+        function runUntilBreakpoint() {
+            fetch(`/api/execution/run/${processId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    max_steps: 1000 // Limit to 1000 steps by default
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateInstructions(data.instructions);
+                    updateRegisters(data.registers);
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error running process. Please try again.', 'danger');
+            });
+        }
+
+        // Function to refresh the debugger state
+        function refreshDebugState() {
+            // Refresh instructions
+            fetch(`/api/instructions/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateInstructions(data.instructions);
+                    }
+                })
+                .catch(error => console.error('Error refreshing instructions:', error));
+            
+            // Refresh registers
+            fetch(`/api/registers/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateRegisters(data.registers);
+                    }
+                })
+                .catch(error => console.error('Error refreshing registers:', error));
+            
+            // Refresh breakpoints
+            fetch(`/api/breakpoints/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateBreakpoints(data.breakpoints);
+                    }
+                })
+                .catch(error => console.error('Error refreshing breakpoints:', error));
+            
+            // Refresh memory
+            refreshMemory();
+        }
+
+        // Function to update the instruction view
+        function updateInstructions(instructions) {
+            if (!instructionsContainer) return;
+            
+            instructionsContainer.innerHTML = '';
+            
+            if (!instructions || instructions.length === 0) {
+                instructionsContainer.innerHTML = '<div class="text-center">No instructions available.</div>';
+                return;
+            }
+            
+            instructions.forEach((instr, index) => {
+                const instrDiv = document.createElement('div');
+                instrDiv.className = `instruction d-flex ${index === 0 ? 'current' : ''}`;
+                instrDiv.dataset.address = instr.address;
+                
+                // Check if this address has a breakpoint
+                const hasBreakpoint = document.querySelector(`.breakpoint-item[data-address="${instr.address}"]`) !== null;
+                
+                instrDiv.innerHTML = `
+                    <div class="me-2 breakpoint-indicator" data-address="${instr.address}">
+                        <i class="bi ${hasBreakpoint ? 'bi-circle-fill breakpoint-enabled' : 'bi-circle'}"></i>
+                    </div>
+                    <div class="me-3 text-muted">${instr.address}</div>
+                    <div class="me-3 text-primary">${instr.opcode}</div>
+                    <div class="text-info">${Array.isArray(instr.operands) ? instr.operands.join(', ') : instr.operands}</div>
+                    <div class="ms-auto text-muted">${instr.bytes || ''}</div>
+                `;
+                
+                instructionsContainer.appendChild(instrDiv);
+            });
+        }
+
+        // Function to update registers view
+        function updateRegisters(registers) {
+            if (!registersContainer) return;
+            
+            registersContainer.innerHTML = '';
+            
+            if (!registers || Object.keys(registers).length === 0) {
+                registersContainer.innerHTML = '<div class="text-center">No register data available.</div>';
+                return;
+            }
+            
+            // Update register container
+            for (const [reg, value] of Object.entries(registers)) {
+                const regDiv = document.createElement('div');
+                regDiv.className = 'col-md-6 mb-2';
+                regDiv.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center register-item" data-register="${reg}">
+                        <span class="fw-bold">${reg}</span>
+                        <span class="register-value">${value}</span>
+                    </div>
+                `;
+                registersContainer.appendChild(regDiv);
+            }
+            
+            // Update register select in the form
+            if (registerNameSelect) {
+                registerNameSelect.innerHTML = '';
+                for (const reg of Object.keys(registers)) {
+                    const option = document.createElement('option');
+                    option.value = reg;
+                    option.textContent = reg;
+                    registerNameSelect.appendChild(option);
+                }
+            }
+        }
+
+        // Function to undo memory edit
+        function undoMemoryEdit() {
+            fetch(`/api/memory/undo/${processId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshMemory();
+                    showAlert('Memory edit undone', 'success');
+                } else {
+                    showAlert(data.error || 'Nothing to undo', 'info');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error undoing memory edit', 'danger');
+            });
+        }
+
+        // Function to redo memory edit
+        function redoMemoryEdit() {
+            fetch(`/api/memory/redo/${processId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshMemory();
+                    showAlert('Memory edit redone', 'success');
+                } else {
+                    showAlert(data.error || 'Nothing to redo', 'info');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error redoing memory edit', 'danger');
+            });
+        }
+
+        // Function to set register value
+        function setRegisterValue(register, value) {
+            fetch(`/api/registers/${processId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    register: register,
+                    value: value
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshDebugState();
+                    showAlert(`Register ${register} set to ${value}`, 'success');
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error setting register value', 'danger');
+            });
+        }
+
+        // Function to set a breakpoint
+        function setBreakpoint(address, type, condition = null) {
+            fetch(`/api/breakpoints/${processId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    address: address,
+                    type: type,
+                    condition: condition
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshDebugState();
+                    showAlert(`Breakpoint set at ${address}`, 'success');
+                    
+                    // Clear the form if it exists
+                    if (bpAddressInput) bpAddressInput.value = '';
+                    if (bpConditionInput) bpConditionInput.value = '';
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error setting breakpoint', 'danger');
+            });
+        }
+
+        // Function to toggle a breakpoint
+        function toggleBreakpoint(address) {
+            fetch(`/api/breakpoints/toggle/${processId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    address: address
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshDebugState();
+                    showAlert(`Breakpoint at ${address} ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error toggling breakpoint', 'danger');
+            });
+        }
+
+        // Function to remove a breakpoint
+        function removeBreakpoint(address) {
+            fetch(`/api/breakpoints/${processId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    address: address
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshDebugState();
+                    showAlert(`Breakpoint removed from ${address}`, 'success');
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error removing breakpoint', 'danger');
+            });
+        }
+
+        // Function to clear all breakpoints
+        function clearAllBreakpoints() {
+            // Get all breakpoints
+            fetch(`/api/breakpoints/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.breakpoints.length > 0) {
+                        // Remove each breakpoint
+                        const promises = data.breakpoints.map(bp => 
+                            fetch(`/api/breakpoints/${processId}`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    address: bp.address
+                                })
+                            })
+                        );
+                        
+                        Promise.all(promises)
+                            .then(() => {
+                                refreshDebugState();
+                                showAlert('All breakpoints cleared', 'success');
+                            });
+                    } else {
+                        showAlert('No breakpoints to clear', 'info');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error clearing breakpoints', 'danger');
+                });
+        }
+
+        // Function to update breakpoints table
+        function updateBreakpoints(breakpoints) {
+            if (!breakpointsTable) return;
+            
+            breakpointsTable.innerHTML = '';
+            
+            if (!breakpoints || breakpoints.length === 0) {
+                breakpointsTable.innerHTML = '<tr><td colspan="6" class="text-center">No breakpoints set.</td></tr>';
+                return;
+            }
+            
+            breakpoints.forEach(bp => {
+                const row = document.createElement('tr');
+                row.className = 'breakpoint-item';
+                row.dataset.address = bp.address;
+                
+                row.innerHTML = `
+                    <td class="memory-address">${bp.address}</td>
+                    <td>${bp.type}</td>
+                    <td>
+                        <i class="bi ${bp.enabled ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i>
+                    </td>
+                    <td>${bp.condition || 'None'}</td>
+                    <td>${bp.hit_count}</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning toggle-bp-btn" data-address="${bp.address}">
+                            ${bp.enabled ? 'Disable' : 'Enable'}
+                        </button>
+                        <button class="btn btn-sm btn-danger remove-bp-btn" data-address="${bp.address}">
+                            Remove
+                        </button>
+                    </td>
+                `;
+                
+                breakpointsTable.appendChild(row);
+            });
+            
+            // Update breakpoint indicators in instructions view
+            document.querySelectorAll('.breakpoint-indicator').forEach(indicator => {
+                const address = indicator.dataset.address;
+                const hasBp = breakpoints.some(bp => bp.address === address && bp.enabled);
+                
+                if (hasBp) {
+                    indicator.querySelector('i').className = 'bi bi-circle-fill breakpoint-enabled';
+                } else {
+                    indicator.querySelector('i').className = 'bi bi-circle';
+                }
+            });
+        }
+
+        // Function to search symbols
+        function searchSymbols(query) {
+            fetch(`/api/symbols/${processId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Filter symbols by the query
+                        let symbols = data.symbols;
+                        if (query && query.trim().length > 0) {
+                            query = query.toLowerCase();
+                            symbols = symbols.filter(sym => 
+                                sym.name.toLowerCase().includes(query) || 
+                                sym.address.toLowerCase().includes(query)
+                            );
+                        }
+                        
+                        updateSymbolsTable(symbols);
+                    } else {
+                        showAlert('Error: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error searching symbols', 'danger');
+                });
+        }
+
+        // Function to update symbols table
+        function updateSymbolsTable(symbols) {
+            if (!symbolsTable) return;
+            
+            symbolsTable.innerHTML = '';
+            
+            if (!symbols || symbols.length === 0) {
+                symbolsTable.innerHTML = '<tr><td colspan="4" class="text-center">No symbols available.</td></tr>';
+                return;
+            }
+            
+            symbols.forEach(sym => {
+                const row = document.createElement('tr');
+                row.className = 'symbol-item';
+                row.dataset.address = sym.address;
+                row.dataset.name = sym.name;
+                
+                row.innerHTML = `
+                    <td class="symbol-name">${sym.name}</td>
+                    <td class="memory-address">${sym.address}</td>
+                    <td>${sym.type}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info jump-to-symbol-btn" data-address="${sym.address}">
+                            Jump To
+                        </button>
+                        <button class="btn btn-sm btn-warning add-bp-at-symbol-btn" data-address="${sym.address}">
+                            Set BP
+                        </button>
+                    </td>
+                `;
+                
+                symbolsTable.appendChild(row);
+            });
+        }
+
+        // Function to jump to a specific address in the code view
+        function jumpToAddress(address) {
+            // Switch to CPU tab
+            const cpuTab = document.getElementById('cpu-tab');
+            if (cpuTab) {
+                const tab = new bootstrap.Tab(cpuTab);
+                tab.show();
+            }
+            
+            // Fetch instructions at this address
+            fetch(`/api/instructions/${processId}?address=${address}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateInstructions(data.instructions);
+                        
+                        // Scroll to the instruction
+                        const instruction = document.querySelector(`.instruction[data-address="${address}"]`);
+                        if (instruction) {
+                            instruction.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            instruction.classList.add('current');
+                        }
+                    } else {
+                        showAlert('Error: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('Error jumping to address', 'danger');
+                });
+        }
+
+        // Function to set the memory display format
+        function setDisplayFormat(format) {
+            fetch('/api/display/format', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    format: format
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    refreshMemory();
+                } else {
+                    showAlert('Error: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error setting display format', 'danger');
+            });
+        }
+
+        // Function to show alerts
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+            alertDiv.role = 'alert';
+            
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // Insert alert before the first element in the container
+            const container = document.querySelector('.container');
+            if (container) {
+                container.insertBefore(alertDiv, container.firstChild);
+                
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    alertDiv.remove();
+                }, 5000);
+            }
+        }
+
+        // Initialize the debugger state on page load
+        refreshDebugState();
+
+        // AI Assistant functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const aiForm = document.getElementById('ai-assistant-form');
+            const aiQuery = document.getElementById('ai-query');
+            const aiResponse = document.getElementById('ai-response');
+            const aiSubmitBtn = document.getElementById('ai-submit-btn');
+            const aiLoadingSpinner = document.getElementById('ai-loading-spinner');
+
+            if (aiForm) {
+                aiForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const query = aiQuery.value.trim();
+                    if (!query) return;
+                    
+                    // Show loading spinner
+                    aiSubmitBtn.disabled = true;
+                    aiLoadingSpinner.classList.remove('d-none');
+                    aiResponse.innerHTML = 'Processing your query...';
+                    
+                    // Get process ID and type
+                    const processId = '{{ process.pid }}';
+                    const processType = '{{ process_type }}';
+                    
+                    // Send request to AI assistant API
+                    fetch(`/api/ai_assistant/${processId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            process_type: processType
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide loading spinner
+                        aiSubmitBtn.disabled = false;
+                        aiLoadingSpinner.classList.add('d-none');
+                        
+                        if (data.success) {
+                            // Display AI response
+                            aiResponse.innerHTML = data.response;
+                        } else {
+                            // Display error
+                            aiResponse.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                        }
+                    })
+                    .catch(error => {
+                        // Hide loading spinner and show error
+                        aiSubmitBtn.disabled = false;
+                        aiLoadingSpinner.classList.add('d-none');
+                        aiResponse.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                    });
+                });
+            }
+        });
+    </script>
+    
+    <!-- AI Assistant Modal -->
+    <div class="modal fade" id="aiAssistantModal" tabindex="-1" aria-labelledby="aiAssistantModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="aiAssistantModalLabel">AI Memory Assistant</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="lead">Ask me to help you find and modify memory values using natural language.</p>
+                    <p>Examples:</p>
+                    <ul>
+                        <li>"Find all instances of the value 100 in memory"</li>
+                        <li>"Change the value at address 0x1000 to 500"</li>
+                        <li>"Show me all memory addresses containing text strings"</li>
+                    </ul>
+                    
+                    <form id="ai-assistant-form" class="mt-4">
+                        <div class="mb-3">
+                            <label for="ai-query" class="form-label">Your Query</label>
+                            <input type="text" class="form-control" id="ai-query" 
+                                   placeholder="E.g., Find memory locations with value 42" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="ai-submit-btn">
+                            <span>Submit Query</span>
+                            <span id="ai-loading-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                        </button>
+                    </form>
+                    
+                    <div class="mt-4">
+                        <h6>Response:</h6>
+                        <div id="ai-response" class="p-3 border rounded bg-dark">
+                            <em>AI response will appear here</em>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
