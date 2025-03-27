@@ -64,7 +64,12 @@ def main():
         'README.md',
         'RELEASE_README.md',
         'version_info.txt',
-        'requirements.txt'
+        'requirements.txt',
+        'build.py',
+        'build_windows.bat',
+        'build_macos.sh',
+        'build_linux.sh',
+        'create_release.py'
     ]
     
     # Copy all Python files and supporting files
@@ -90,6 +95,7 @@ gunicorn>=23.0.0
 psutil>=7.0.0
 requests>=2.32.3
 python-dotenv>=1.0.0
+pyinstaller>=6.0.0
 """)
     
     # Create the quick start guide
@@ -97,6 +103,8 @@ python-dotenv>=1.0.0
         f.write("""MEMORY DEBUGGER QUICK START GUIDE
 ==============================
 
+Option 1: Run directly
+---------------------
 1. Install Python 3.10 or later if you don't have it already
 2. Install the required dependencies:
    pip install -r requirements.txt
@@ -104,6 +112,29 @@ python-dotenv>=1.0.0
 4. Run the application:
    python main.py
 5. Open your web browser and go to http://localhost:5000
+
+Option 2: Build an executable (no Python required to run it)
+-----------------------------------------------------------
+Windows:
+1. Install Python 3.10 or later
+2. Install required dependencies: pip install -r requirements.txt pyinstaller
+3. Run the build script: build_windows.bat
+4. The executable will be created in the 'dist' folder
+5. Double-click dist/MemoryDebugger.exe to run the application
+
+macOS:
+1. Install Python 3.10 or later
+2. Install required dependencies: pip install -r requirements.txt pyinstaller
+3. Make the build script executable: chmod +x build_macos.sh
+4. Run the build script: ./build_macos.sh
+5. The executable will be created in the 'dist' folder
+
+Linux:
+1. Install Python 3.10 or later
+2. Install required dependencies: pip install -r requirements.txt pyinstaller
+3. Make the build script executable: chmod +x build_linux.sh
+4. Run the build script: ./build_linux.sh
+5. The executable will be created in the 'dist' folder
 
 For more detailed instructions, see INSTALLATION.md and README.md
 """)
