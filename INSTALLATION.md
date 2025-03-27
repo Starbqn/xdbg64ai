@@ -1,96 +1,117 @@
 # Memory Debugger Installation Guide
 
-This document provides step-by-step instructions for installing and running the Memory Debugger application.
+This guide provides detailed instructions for installing and running the Memory Debugger application on different platforms.
 
-## System Requirements
+## Prerequisites
 
-- **Windows:** Windows 10 or later (64-bit)
-- **macOS:** macOS 10.15 (Catalina) or later
-- **Linux:** Most modern Linux distributions (Ubuntu 20.04+, Fedora 32+, etc.)
+- Python 3.10 or later
+- pip (Python package manager)
+- Internet connection (for downloading dependencies)
 
 ## Installation Steps
 
+### 1. Download and Extract
+
+Download the Memory Debugger package and extract it to a folder of your choice.
+
+### 2. Install Dependencies
+
+Open a terminal or command prompt and navigate to the extracted folder. Install the required Python packages:
+
+```bash
+pip install anthropic email-validator flask flask-sqlalchemy gunicorn psutil psycopg2-binary requests python-dotenv
+```
+
+### 3. Configure Environment
+
+1. Copy the `.env.example` file to a new file named `.env`:
+
+   **Windows:**
+   ```
+   copy .env.example .env
+   ```
+
+   **macOS/Linux:**
+   ```
+   cp .env.example .env
+   ```
+
+2. Edit the `.env` file and add your Anthropic API key (required for the AI assistant functionality).
+   You can get an API key from [https://console.anthropic.com/](https://console.anthropic.com/)
+
+### 4. Run the Application
+
+1. Start the application:
+
+   ```bash
+   python main.py
+   ```
+
+2. Open your web browser and navigate to:
+   ```
+   http://localhost:5000
+   ```
+
+## Platform-Specific Notes
+
 ### Windows
 
-1. Extract the ZIP file to a directory of your choice
-2. Copy the `.env.example` file to `.env` in the same directory
-3. Edit the `.env` file and add your Anthropic API key:
-   ```
-   ANTHROPIC_API_KEY=your_api_key_here
-   ```
-4. Double-click the `MemoryDebugger.exe` file to start the application
-5. Access the application in your web browser at: http://localhost:5000
+- If you encounter permission issues, try running the command prompt as Administrator.
+- For easier Python management on Windows, consider using [Windows Terminal](https://aka.ms/terminal) and [Python Launcher](https://docs.python.org/3/using/windows.html#python-launcher-for-windows).
 
 ### macOS
 
-1. Extract the ZIP file to a directory of your choice
-2. Copy the `.env.example` file to `.env` in the same directory
-3. Edit the `.env` file and add your Anthropic API key:
-   ```
-   ANTHROPIC_API_KEY=your_api_key_here
-   ```
-4. Open Terminal and navigate to the extracted directory
-5. Make the executable file runnable:
-   ```bash
-   chmod +x MemoryDebugger
-   ```
-6. Run the application:
-   ```bash
-   ./MemoryDebugger
-   ```
-7. Access the application in your web browser at: http://localhost:5000
+- If you're using a Mac with Apple Silicon (M1/M2), ensure you're using a compatible version of Python.
+- You might need to install command-line developer tools if prompted.
 
 ### Linux
 
-1. Extract the ZIP file to a directory of your choice
-2. Copy the `.env.example` file to `.env` in the same directory
-3. Edit the `.env` file and add your Anthropic API key:
-   ```
-   ANTHROPIC_API_KEY=your_api_key_here
-   ```
-4. Make the executable file runnable:
-   ```bash
-   chmod +x MemoryDebugger
-   ```
-5. Run the application:
-   ```bash
-   ./MemoryDebugger
-   ```
-6. Access the application in your web browser at: http://localhost:5000
+- You may need to install additional system dependencies depending on your distribution:
+
+  **Ubuntu/Debian:**
+  ```
+  sudo apt-get install python3-dev build-essential
+  ```
+
+  **Fedora:**
+  ```
+  sudo dnf install python3-devel gcc
+  ```
 
 ## Troubleshooting
 
-### Windows
+### Common Issues
 
-- If you see a security warning, click "More info" and then "Run anyway"
-- To access real system processes, you may need to run the application as Administrator
+1. **ModuleNotFoundError**: Make sure you have installed all dependencies as listed in step 2.
 
-### macOS
+2. **Permission Denied**: On macOS/Linux, you might need to make the script executable:
+   ```
+   chmod +x main.py
+   ```
 
-- If you see a security warning about an unidentified developer:
-  1. Right-click (or Control-click) the application
-  2. Select "Open" from the context menu
-  3. Click "Open" in the dialog that appears
-- To access real system processes, you may need to run with sudo:
-  ```bash
-  sudo ./MemoryDebugger
-  ```
+3. **Port Already in Use**: If port 5000 is already in use, edit the `.env` file and change the `PORT` value.
 
-### Linux
+4. **AI Assistant Not Working**: Verify that you have properly set the `ANTHROPIC_API_KEY` in the `.env` file.
 
-- To access real system processes, you may need to run with sudo:
-  ```bash
-  sudo ./MemoryDebugger
-  ```
+### Getting Help
 
-## Getting Help
+If you encounter any issues not covered here, please refer to the [README.md](./README.md) file for more information or contact support.
 
-If you encounter any issues while installing or using the Memory Debugger, please:
+## Updating
 
-1. Check the included README.md file for additional information
-2. Visit our GitHub repository to report issues or ask questions
-3. Make sure your Anthropic API key is valid and has been correctly added to the .env file
+To update to a newer version:
+
+1. Download the new version
+2. Extract it to a new folder
+3. Copy your `.env` file from the old installation to the new one
+4. Run the application as described above
 
 ## Uninstallation
 
-To uninstall Memory Debugger, simply delete the extracted directory and all its contents.
+To uninstall the Memory Debugger:
+
+1. Delete the application folder
+2. Optionally, remove the installed Python packages if they're not used by other applications:
+   ```
+   pip uninstall anthropic email-validator flask flask-sqlalchemy gunicorn psutil requests
+   ```

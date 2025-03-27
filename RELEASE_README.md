@@ -1,65 +1,49 @@
 # Memory Debugger
 
-A powerful tool for inspecting and manipulating process memory.
-
-## Features
-
-- **Process Listing**: View all running processes on your system
-- **Memory Viewing**: Inspect memory contents in various formats (hex, decimal, ASCII)
-- **Memory Editing**: Modify process memory values directly from the browser interface
-- **Register Access**: View and modify CPU register values
-- **Breakpoints**: Set, toggle, and manage breakpoints for precise control
-- **AI Assistant**: Get help with memory analysis through natural language queries
-- **Multi-platform Support**: Works on Windows, macOS, and Linux
+Thank you for downloading Memory Debugger!
 
 ## Quick Start
 
-1. Copy the `.env.example` file to `.env` in the same directory
-2. Edit the `.env` file to add your Anthropic API key (if you want to use the AI assistant feature)
-3. Run the Memory Debugger executable
-4. Open your web browser and go to http://localhost:5000
+1. Extract the contents of this package
+2. Install the required dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Copy `.env.example` to `.env` and add your Anthropic API key
+4. Run the application:
+   ```
+   python main.py
+   ```
+5. Open your browser and go to http://localhost:5000
 
-For more detailed instructions, please refer to the `INSTALLATION.md` file included in this package.
+## What's In This Package
 
-## Usage Notes
+- `main.py` - The main application entry point
+- `app.py` - Flask web application
+- `memory_editor.py` - Core memory editing functionality
+- `process_simulator.py` - Process simulation for learning
+- `process_bridge.py` - Bridge between simulated and real processes
+- `real_process_connector.py` - Connection to real system processes
+- `memory_ai_assistant.py` - AI assistant for memory operations
+- `templates/` - HTML templates
+- `static/` - JavaScript, CSS, and other static assets
+- `.env.example` - Example environment configuration
+- `INSTALLATION.md` - Detailed installation instructions
+- `README.md` - Full documentation
 
-### Working with Simulated Processes
+## Version Information
 
-Simulated processes provide a safe environment to learn and practice memory debugging:
+- Version: 1.0.0
+- Release Date: March 2025
 
-1. Click "Create New Process" to generate a simulated process
-2. Click on a process name to view its memory
-3. Use the interface to explore memory contents, set breakpoints, and modify values
-4. The AI assistant can help answer questions about memory patterns or suggest debugging approaches
+## Getting Help
 
-### Working with Real Processes
-
-When working with real system processes, additional permissions may be required:
-
-- On Windows: Run the application as Administrator
-- On macOS/Linux: Run with sudo privileges
-
-**Important**: Modifying memory in real processes can cause system instability. Use with caution.
-
-## AI Assistant
-
-The Memory Debugger includes an AI assistant powered by Anthropic Claude. To use this feature:
-
-1. Obtain an API key from [Anthropic](https://www.anthropic.com/)
-2. Add the key to your `.env` file as `ANTHROPIC_API_KEY=your_key_here`
-3. Use the AI assistant panel to ask questions in natural language
-
-Example questions:
-- "Find the value 42 in memory"
-- "What does the instruction at address 0x1000 do?"
-- "Explain the memory region at 0x7FFF0000"
-
-## Known Limitations
-
-- Real process memory access requires elevated privileges
-- Some memory regions may be protected by the operating system and cannot be accessed
-- The AI assistant requires an internet connection and a valid Anthropic API key
+For detailed instructions, see the `INSTALLATION.md` and `README.md` files included in this package.
 
 ## License
 
-This software is distributed under the terms of the included LICENSE file.
+This software is distributed under the MIT License. See the `LICENSE` file for details.
+
+---
+
+Memory Debugger © 2025
