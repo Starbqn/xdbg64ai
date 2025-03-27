@@ -65,6 +65,35 @@ A robust memory editor designed for detailed system process inspection and memor
 
 5. Access the web interface at `http://localhost:5000`
 
+## Packaging as a Standalone Application
+
+To build a standalone executable:
+
+1. Install the build dependencies:
+   ```
+   python install_dependencies.py
+   ```
+
+2. Run the appropriate build script for your platform:
+   
+   **Windows**:
+   ```
+   build_windows.bat
+   ```
+   
+   **macOS**:
+   ```
+   ./build_macos.sh
+   ```
+   
+   **Linux**:
+   ```
+   ./build_linux.sh
+   ```
+
+3. The packaged application will be available in the `dist` directory
+4. A ZIP archive for distribution will be available in the `releases` directory
+
 ## Usage
 
 ### Process Selection

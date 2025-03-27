@@ -1,8 +1,11 @@
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
+name = "memory-debugger"
+version = "1.0.0"
+description = "A robust memory editor designed for detailed system process inspection and memory manipulation"
+authors = [
+    {name = "Memory Debugger Project"}
+]
+requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.49.0",
     "email-validator>=2.2.0",
@@ -11,5 +14,6 @@ dependencies = [
     "gunicorn>=23.0.0",
     "psutil>=7.0.0",
     "psycopg2-binary>=2.9.10",
+    "pyinstaller>=6.12.0",
     "requests>=2.32.3",
 ]
