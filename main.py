@@ -4,7 +4,11 @@ import webbrowser
 import threading
 import time
 import logging
+from dotenv import load_dotenv
 from app import app
+
+# Load environment variables from .env file if it exists
+load_dotenv(verbose=True)
 
 # Note: sys._MEIPASS is a special path added by PyInstaller at runtime.
 # It will not be present during normal Python execution but only when

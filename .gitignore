@@ -1,6 +1,13 @@
-# Environment variables
+# Environment variables and secrets
 .env
 .env.*
+well.env
+*.env
+*secret*
+*key*
+*token*
+*credential*
+*password*
 
 # Python
 __pycache__/

@@ -21,9 +21,14 @@ logger = logging.getLogger(__name__)
 # Get API key from environment variable
 anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
 if not anthropic_key:
-    logger.error("ANTHROPIC_API_KEY environment variable must be set")
-    # Don't exit here, as it would crash the application
-    # We'll handle the missing key gracefully in the code
+    logger.warning("ANTHROPIC_API_KEY environment variable not set")
+    logger.info("AI assistant features will be disabled")
+    # The application will still run, but AI features will be gracefully disabled
+    print("=" * 80)
+    print("NOTE: Anthropic API key not found. AI assistant features are disabled.")
+    print("To enable AI features, set the ANTHROPIC_API_KEY environment variable.")
+    print("See .env.example for configuration instructions.")
+    print("=" * 80)
 
 class MemoryAIAssistant:
     """
@@ -49,7 +54,8 @@ class MemoryAIAssistant:
         if anthropic_key:
             try:
                 self.client = anthropic.Anthropic(api_key=anthropic_key)
-                self.model = "claude-3-5-sonnet-20241022"  # the newest Anthropic model is "claude-3-5-sonnet-20241022" which was released October 22, 2024
+                # Using model name from environment or default to a versioned model
+                self.model = os.environ.get('ANTHROPIC_MODEL', 'claude-3-sonnet')
                 logger.info("Initialized Anthropic client successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize Anthropic client: {e}")
@@ -96,8 +102,8 @@ class MemoryAIAssistant:
                 model=self.model,
                 system=system_prompt,
                 messages=messages if messages else None,
-                max_tokens=1000,
-                temperature=0
+                max_tokens=int(os.environ.get('ANTHROPIC_MAX_TOKENS', '1000')),
+                temperature=float(os.environ.get('ANTHROPIC_TEMPERATURE', '0'))
             )
             
             # Extract the text from the response

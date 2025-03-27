@@ -53,10 +53,14 @@ A robust memory editor designed for detailed system process inspection and memor
    ```
 
 3. Set up environment variables:
-   - Create a `.env` file in the project root:
+   - Copy the `.env.example` file to `.env` and add your API keys:
    ```
-   ANTHROPIC_API_KEY=your_api_key_here
+   cp .env.example .env
+   # Then edit .env with your actual API keys
    ```
+   
+   - For security, never commit your `.env` file to version control
+   - The AI assistant features require an Anthropic API key
 
 4. Run the application:
    ```
@@ -131,13 +135,25 @@ The system consists of several core components:
 - **Memory Editor**: Handles memory operations and debugging features
 - **Memory AI Assistant**: Processes natural language commands for memory operations
 
-## Security Note
+## Security Notes
+
+### Process Security
 
 This tool is designed for educational purposes and legitimate debugging tasks. When attaching to real processes:
 
 - Be aware of security implications and legal considerations
 - Only attach to processes you own or have permission to debug
 - Use with caution on production systems
+
+### API Key Security
+
+For the AI assistant features that use external APIs:
+
+- Store API keys in environment variables or a `.env` file, never hardcode them
+- The `.env` file is excluded from version control by default (see .gitignore)
+- Never commit API keys or authentication tokens to a public repository
+- Regenerate API keys immediately if they're accidentally exposed
+- When reporting issues or sharing code, always remove any API keys
 
 ## License
 
